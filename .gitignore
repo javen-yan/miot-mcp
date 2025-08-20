@@ -1,0 +1,6 @@
+.venv
+auth_data.json
+__pycache__
+.vscode
+.idea
+.env
