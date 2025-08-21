@@ -61,6 +61,100 @@ python mcp_server/mcp_server.py
 python mcp_test.py
 ```
 
+## AI 工具集成
+
+### Claude Desktop 集成
+
+在 Claude Desktop 配置文件中添加以下配置：
+
+**macOS**: `~/Library/Application Support/Claude/claude_desktop_config.json`
+**Windows**: `%APPDATA%\Claude\claude_desktop_config.json`
+
+```json
+{
+  "mcpServers": {
+    "mijia": {
+      "command": "python",
+      "args": ["/path/to/miot-agent/mcp_server/mcp_server.py"],
+      "env": {
+        "MIJIA_USERNAME": "your_username",
+        "MIJIA_PASSWORD": "your_password",
+        "MIJIA_ENABLE_QR": "false",
+        "MIJIA_LOG_LEVEL": "INFO"
+      }
+    }
+  }
+}
+```
+
+### Continue.dev 集成
+
+在 Continue 配置中添加：
+
+```json
+{
+  "mcpServers": {
+    "mijia": {
+      "command": "python",
+      "args": ["/path/to/miot-agent/mcp_server/mcp_server.py"],
+      "env": {
+        "MIJIA_USERNAME": "your_username",
+        "MIJIA_PASSWORD": "your_password"
+      }
+    }
+  }
+}
+```
+
+### Cline 集成
+
+对于 Cline（原 Claude Dev），添加 MCP 服务器配置：
+
+```json
+{
+  "mcp": {
+    "servers": {
+      "mijia": {
+        "command": "python",
+        "args": ["/path/to/miot-agent/mcp_server/mcp_server.py"],
+        "env": {
+          "MIJIA_USERNAME": "your_username",
+          "MIJIA_PASSWORD": "your_password"
+        }
+      }
+    }
+  }
+}
+```
+
+### 通用 MCP 客户端集成
+
+对于任何兼容 MCP 的客户端：
+
+1. **命令**: `python /path/to/miot-agent/mcp_server/mcp_server.py`
+2. **环境变量**:
+   - `MIJIA_USERNAME`: 米家账户用户名
+   - `MIJIA_PASSWORD`: 米家账户密码
+   - `MIJIA_ENABLE_QR`: 设置为 "true" 启用二维码登录（可选）
+   - `MIJIA_LOG_LEVEL`: 日志级别（DEBUG, INFO, WARNING, ERROR）
+
+### 验证集成
+
+集成完成后，您应该能在 AI 助手中看到以下工具：
+
+- **连接管理**: `connect`, `disconnect`, `ping`
+- **设备管理**: `discover_devices`, `search_devices`
+- **属性操作**: `get_property_value`, `set_property_value`, `batch_set_properties`
+- **动作操作**: `call_action`
+- **状态监控**: `get_device_status`, `refresh_all_device_status`
+- **系统管理**: `get_server_status`, `clear_cache`
+
+以及这些资源：
+- `mijia://devices` - 设备列表
+- `mijia://config` - 配置信息
+- `mijia://device/{device_id}/properties` - 设备属性
+- `mijia://device/{device_id}/actions` - 设备动作
+
 ## 工具使用指南
 
 ### 连接管理

@@ -61,6 +61,104 @@ python mcp_server/mcp_server.py
 python mcp_test.py
 ```
 
+## AI Tool Integration
+
+### Claude Desktop Integration
+
+Add the following configuration to your Claude Desktop config file:
+
+**macOS**: `~/Library/Application Support/Claude/claude_desktop_config.json`
+**Windows**: `%APPDATA%\Claude\claude_desktop_config.json`
+
+```json
+{
+  "mcpServers": {
+    "mijia": {
+      "command": "python",
+      "args": ["/path/to/miot-agent/mcp_server/mcp_server.py"],
+      "env": {
+        "MIJIA_USERNAME": "your_username",
+        "MIJIA_PASSWORD": "your_password",
+        "MIJIA_ENABLE_QR": "false",
+        "MIJIA_LOG_LEVEL": "INFO"
+      }
+    }
+  }
+}
+```
+
+### Continue.dev Integration
+
+Add to your Continue configuration:
+
+```json
+{
+  "mcpServers": {
+    "mijia": {
+      "command": "python",
+      "args": ["/path/to/miot-agent/mcp_server/mcp_server.py"],
+      "env": {
+        "MIJIA_USERNAME": "your_username",
+        "MIJIA_PASSWORD": "your_password",
+        "MIJIA_ENABLE_QR": "false",
+        "MIJIA_LOG_LEVEL": "INFO"
+      }
+    }
+  }
+}
+```
+
+### Cline Integration
+
+For Cline (formerly Claude Dev), add the MCP server configuration:
+
+```json
+{
+  "mcp": {
+    "servers": {
+      "mijia": {
+        "command": "python",
+        "args": ["/path/to/miot-agent/mcp_server/mcp_server.py"],
+        "env": {
+          "MIJIA_USERNAME": "your_username",
+          "MIJIA_PASSWORD": "your_password",
+          "MIJIA_ENABLE_QR": "false",
+          "MIJIA_LOG_LEVEL": "INFO"
+        }
+      }
+    }
+  }
+}
+```
+
+### Generic MCP Client Integration
+
+For any MCP-compatible client:
+
+1. **Command**: `python /path/to/miot-agent/mcp_server/mcp_server.py`
+2. **Environment Variables**:
+   - `MIJIA_USERNAME`: Your Mijia account username
+   - `MIJIA_PASSWORD`: Your Mijia account password
+   - `MIJIA_ENABLE_QR`: Set to "true" for QR code login (optional)
+   - `MIJIA_LOG_LEVEL`: Log level (DEBUG, INFO, WARNING, ERROR)
+
+### Verification
+
+After integration, you should see the following tools available in your AI assistant:
+
+- **Connection**: `connect`, `disconnect`, `ping`
+- **Device Management**: `discover_devices`, `search_devices`
+- **Property Operations**: `get_property_value`, `set_property_value`, `batch_set_properties`
+- **Action Operations**: `call_action`
+- **Status Monitoring**: `get_device_status`, `refresh_all_device_status`
+- **System Management**: `get_server_status`, `clear_cache`
+
+And these resources:
+- `mijia://devices` - Device list
+- `mijia://config` - Configuration information
+- `mijia://device/{device_id}/properties` - Device properties
+- `mijia://device/{device_id}/actions` - Device actions
+
 ## Tool Usage Guide
 
 ### Connection Management
