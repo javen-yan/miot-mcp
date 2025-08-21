@@ -530,6 +530,12 @@ async def get_your_resource() -> str:
 }
 ```
 
+## 致谢
+
+感谢以下开源项目的支持：
+
+- [mijia-api](https://github.com/Do1e/mijia-api) - 提供了米家设备控制的核心API实现
+
 ## 许可证
 
 MIT License

@@ -534,6 +534,12 @@ async def get_your_resource() -> str:
 }
 ```
 
+## Thanks
+
+Thanks to the following open source projects for their support:
+
+- [mijia-api](https://github.com/Do1e/mijia-api) - Provides the core API implementation for controlling Mijia devices
+
 ## License
 
 MIT License
