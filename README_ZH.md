@@ -142,7 +142,7 @@ python mcp_test.py
 
 集成完成后，您应该能在 AI 助手中看到以下工具：
 
-- **连接管理**: `connect`, `disconnect`, `ping`
+- **连接管理**: `connect`, `connect_with_qr`, `disconnect`, `ping`
 - **设备管理**: `discover_devices`, `search_devices`
 - **属性操作**: `get_property_value`, `set_property_value`, `batch_set_properties`
 - **动作操作**: `call_action`

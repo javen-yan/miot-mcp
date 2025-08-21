@@ -146,7 +146,7 @@ For any MCP-compatible client:
 
 After integration, you should see the following tools available in your AI assistant:
 
-- **Connection**: `connect`, `disconnect`, `ping`
+- **Connection**: `connect`, `connect_with_qr`, `disconnect`, `ping`
 - **Device Management**: `discover_devices`, `search_devices`
 - **Property Operations**: `get_property_value`, `set_property_value`, `batch_set_properties`
 - **Action Operations**: `call_action`

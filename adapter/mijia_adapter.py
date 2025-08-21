@@ -7,6 +7,13 @@ from config.mijia_config import load_mijia_config, MijiaConfig
 import json
 import traceback
 from datetime import datetime
+import threading
+import time
+from pathlib import Path
+try:
+    from PIL import Image
+except ImportError:
+    Image = None
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -102,7 +109,7 @@ class MijiaAdapter:
                 raise ValueError(error_msg)
 
             login = mijiaLogin()
-            auth_data = self.load_auth_data()
+            auth_data = self._load_auth_data()
             
             if auth_data:
                 self._auth_data = auth_data
@@ -112,7 +119,7 @@ class MijiaAdapter:
                 
                 if self._config.enableQR:
                     _LOGGER.info("Using QR code login mode")
-                    self._auth_data = login.QRlogin()
+                    self._auth_data = self._qr_login_with_display(login)
                 else:
                     _LOGGER.info(f"Using username/password login: {self._config.username}")
                     if not self._config.username or not self._config.password:
@@ -123,7 +130,7 @@ class MijiaAdapter:
                     self._auth_data = login.login(self._config.username, self._config.password)
 
                 if self._auth_data:
-                    self.save_auth_data(self._auth_data)
+                    self._save_auth_data(self._auth_data)
                     _LOGGER.info("Login successful, authentication data saved")
                 else:
                     error_msg = "Login failed, authentication data not obtained"
@@ -164,7 +171,69 @@ class MijiaAdapter:
             self._api = None
             
             return False
-    
+
+    def _qr_file_monitor(self, qr_png_path, stop_event):
+        """Monitor for QR PNG file creation and display it"""
+        _LOGGER.info("Starting QR file monitor thread...")
+        
+        while not stop_event.is_set():
+            if qr_png_path.exists():
+                _LOGGER.info(f"QR PNG file detected: {qr_png_path}")
+                try:
+                    if Image:
+                        # Open and display the QR code image
+                        img = Image.open(qr_png_path)
+                        _LOGGER.info("Displaying QR code image...")
+                        img.show()
+                        _LOGGER.info("QR code image displayed. Please scan with Mi Home app.")
+                    else:
+                        _LOGGER.warning("PIL not available, cannot display QR code image")
+                        _LOGGER.info(f"QR code saved to: {qr_png_path}")
+                    break
+                except Exception as e:
+                    _LOGGER.error(f"Error displaying QR image: {e}")
+                    break
+            
+            # Check every 0.5 seconds
+            time.sleep(0.5)
+        
+        _LOGGER.info("QR file monitor thread stopped.")
+
+    def _qr_login_with_display(self, login):
+        """QR login with automatic image display"""
+        # Get current working directory
+        current_dir = Path.cwd()
+        qr_png_path = current_dir / "qr.png"
+        
+        # Remove existing qr.png if it exists
+        if qr_png_path.exists():
+            _LOGGER.info("Removing existing qr.png file...")
+            qr_png_path.unlink()
+        
+        # Create stop event for the monitor thread
+        stop_event = threading.Event()
+        
+        # Start QR file monitor thread
+        monitor_thread = threading.Thread(
+            target=self._qr_file_monitor, 
+            args=(qr_png_path, stop_event),
+            daemon=True
+        )
+        monitor_thread.start()
+        
+        try:
+            # Call QRlogin - this should generate qr.png
+            auth_data = login.QRlogin()
+            return auth_data
+        except Exception as e:
+            _LOGGER.error(f"QR login failed: {e}")
+            raise
+        finally:
+            # Stop the monitor thread
+            stop_event.set()
+            # Wait for monitor thread to complete or timeout
+            monitor_thread.join(timeout=2)
+
     async def disconnect(self):
         """Disconnect"""
         try:

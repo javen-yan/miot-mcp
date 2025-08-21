@@ -52,6 +52,36 @@ def get_adapter() -> Optional[MijiaAdapter]:
     return _adapter
 
 
+def device_to_dict(device) -> Dict[str, Any]:
+    """Convert mijiaDevice object to dictionary for JSON serialization
+    
+    Args:
+        device: mijiaDevice object
+        
+    Returns:
+        Dict containing device information
+    """
+    try:
+        return {
+            "did": getattr(device, 'did', None),
+            "name": getattr(device, 'name', None),
+            "model": getattr(device, 'model', None),
+            "online": getattr(device, 'online', True),
+            "room_id": getattr(device, 'room_id', None),
+            "spec_type": getattr(device, 'spec_type', None),
+            "token": getattr(device, 'token', None),
+            "ip": getattr(device, 'ip', None),
+            "mac": getattr(device, 'mac', None)
+        }
+    except Exception as e:
+        logger.warning(f"Failed to convert device to dict: {e}")
+        return {
+            "did": str(device) if device else None,
+            "name": "Unknown Device",
+            "error": str(e)
+        }
+
+
 @mcp.resource("mijia://devices")
 async def get_devices_resource() -> str:
     """Get device list resource
@@ -71,17 +101,8 @@ async def get_devices_resource() -> str:
             await adapter.connect()
         
         devices = await adapter.discover_devices()
-        device_list = []
-        for device in devices:
-            device_info = {
-                "did": device.did,
-                "name": device.name,
-                "model": device.model,
-                "online": getattr(device, 'online', True),
-                "room_id": getattr(device, 'room_id', None),
-                "spec_type": getattr(device, 'spec_type', None)
-            }
-            device_list.append(device_info)
+        # Convert mijiaDevice objects to dictionaries for JSON serialization
+        device_list = [device_to_dict(device) for device in devices]
         
         result = {
             "devices": device_list,
@@ -316,10 +337,12 @@ async def discover_devices() -> str:
         }, ensure_ascii=False, indent=2)
     try:
         devices = await _adapter.discover_devices()
+        # Convert mijiaDevice objects to dictionaries for JSON serialization
+        device_dicts = [device_to_dict(device) for device in devices]
         return json.dumps({
             "success": True,
-            "devices": devices,
-            "count": len(devices)
+            "devices": device_dicts,
+            "count": len(device_dicts)
         }, ensure_ascii=False, indent=2)
     except Exception as e:
         logger.error(f"Device discovery failed: {e}")
@@ -853,9 +876,10 @@ async def ping(message: str = "hello") -> str:
 if __name__ == "__main__":
     # Initialize adapter
     logger.info("Initializing Mijia adapter...")
-    _adapter = MijiaAdapter(default_config)
-    logger.info("Mijia adapter initialization completed")
-    
+    adapter = get_adapter()
+    if not adapter:
+        logger.error("Failed to initialize Mijia adapter")
+        exit(1)
     # Start server
     logger.info("Starting MCP server...")
     mcp.run()
