@@ -1,0 +1,61 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "miot-mcp"
+version = "1.0.0"
+authors = [
+    {name = "Javen Yan", email = "2023335616@qq.com"},
+]
+description = "Mijia smart device MCP server, providing device discovery, property read/write, action invoke and other functions"
+readme = "README.md"
+requires-python = ">=3.8"
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Home Automation",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
+keywords = ["xiaomi", "mijia", "iot", "smart-home", "mcp", "automation"]
+dependencies = [
+    "mcp>=1.13.0",
+    "mijiaAPI>=2.0.1",
+    "Pillow>=10.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "setuptools>=80.9.0",
+    "build",
+    "twine",
+]
+docs = [
+    "sphinx>=5.0.0",
+    "sphinx-rtd-theme>=1.0.0",
+]
+
+[project.urls]
+"Homepage" = "https://github.com/javen-yan/miot-mcp"
+"Bug Reports" = "https://github.com/javen-yan/miot-mcp/issues"
+"Source" = "https://github.com/javen-yan/miot-mcp"
+"Documentation" = "https://github.com/javen-yan/miot-mcp#readme"
+
+[project.scripts]
+miot-mcp = "mcp_server.mcp_server:main"
+
+[tool.setuptools.packages.find]
+where = ["."]  # list of folders that contain the packages (["src"] by default)
+include = ["*"]  # package names should match these glob patterns (["*"] by default)
+exclude = ["tests*"]  # exclude packages matching these glob patterns (empty by default)
+
+[tool.setuptools.package-data]
+"mcp_server" = ["*.json"]

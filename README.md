@@ -536,6 +536,31 @@ async def get_your_resource() -> str:
 
 - [mijia-api](https://github.com/Do1e/mijia-api) - 提供了米家设备控制的核心API实现
 
+## 🚀 自动化发布
+
+本项目配置了 GitHub Actions 自动化工作流：
+
+### 📦 PyPI 自动发布
+
+当创建新的 GitHub Release 时，会自动：
+1. 构建 Python 包
+2. 检查包质量
+3. 发布到 PyPI
+
+**配置步骤：**
+1. 在 PyPI 创建 API Token
+2. 在 GitHub 仓库设置中添加 `PYPI_API_TOKEN` Secret
+3. 创建 Release 即可自动发布
+
+详细说明请参考 [GitHub Actions 配置指南](.github/README.md)
+
+### 🧪 持续集成测试
+
+每次推送代码时自动：
+- 在多个 Python 版本上测试
+- 代码质量检查
+- 包构建验证
+
 ## 许可证
 
 MIT License

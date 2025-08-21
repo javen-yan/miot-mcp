@@ -873,7 +873,8 @@ async def ping(message: str = "hello") -> str:
     }, ensure_ascii=False, indent=2)
 
 
-if __name__ == "__main__":
+def main():
+    """Main entry point for the MCP server"""
     # Initialize adapter
     logger.info("Initializing Mijia adapter...")
     adapter = get_adapter()
@@ -883,3 +884,7 @@ if __name__ == "__main__":
     # Start server
     logger.info("Starting MCP server...")
     mcp.run()
+
+
+if __name__ == "__main__":
+    main()

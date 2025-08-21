@@ -1,0 +1,7 @@
+include README.md
+include README_EN.md
+include LICENSE
+include requirements.txt
+recursive-include mcp_server *.json
+recursive-include config *.py
+recursive-include adapter *.py
