@@ -30,6 +30,25 @@ A Mijia smart device control server based on Model Context Protocol (MCP), provi
 - Server status monitoring
 - Connectivity testing
 
+## Feature Showcase
+
+### 🎯 Core Features
+![Feature Overview](static/feature.png)
+
+### 🔍 Device Discovery
+![Device Discovery](static/discover-devices.png)
+
+### 📱 Device Information
+![Device Information](static/device-info.png)
+
+### 🛠️ Available Tools
+![Tools List](static/tools.png)
+
+### 🖥️ Server Status
+![Server Status](static/server-info.png)
+
+...
+
 ## Quick Start
 
 ### 1. Install Dependencies
@@ -539,6 +558,21 @@ async def get_your_resource() -> str:
 Thanks to the following open source projects for their support:
 
 - [mijia-api](https://github.com/Do1e/mijia-api) - Provides the core API implementation for controlling Mijia devices
+
+## TODO
+
+### Completed Features ✅
+- [x] Connect to Mijia Cloud Service
+- [x] Device Discovery
+- [x] Get Device Information
+- [x] Device Status Query
+- [x] Server Status Monitoring
+
+### Features Under Development 🚧
+- [ ] Device Control Feature Development
+  - Device control functionality is not yet ready
+  - Need to improve device property setting and action execution features
+  - Plan to implement complete device control capabilities in future versions
 
 ## License
 
