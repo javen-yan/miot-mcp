@@ -1,0 +1,149 @@
+{
+  "name": "mijia-mcp-server",
+  "version": "1.0.0",
+  "description": "Mijia smart device MCP server, providing device discovery, property read/write, action invoke and other functions",
+  "author": "Mijia MCP Team",
+  "license": "MIT",
+  "capabilities": {
+    "resources": {
+      "subscribe": false,
+      "listChanged": false
+    },
+    "tools": {
+      "listChanged": false
+    },
+    "logging": {
+      "level": "info"
+    }
+  },
+  "resources": [
+    {
+      "uri": "mijia://devices",
+      "name": "Mijia Device List",
+      "description": "Get all discovered Mijia smart devices",
+      "mimeType": "application/json"
+    },
+    {
+      "uri": "mijia://config",
+      "name": "Mijia Configuration",
+      "description": "Current Mijia account configuration and connection status",
+      "mimeType": "application/json"
+    },
+    {
+      "uri": "mijia://device/{device_id}/properties",
+      "name": "Device Properties",
+      "description": "All property information for specified device",
+      "mimeType": "application/json"
+    },
+    {
+      "uri": "mijia://device/{device_id}/actions",
+      "name": "Device Actions",
+      "description": "All available actions for specified device",
+      "mimeType": "application/json"
+    }
+  ],
+  "tools": [
+    {
+      "name": "connect",
+      "description": "Connect to Mijia cloud service",
+      "category": "connection"
+    },
+    {
+      "name": "disconnect",
+      "description": "Disconnect from Mijia cloud service",
+      "category": "connection"
+    },
+    {
+      "name": "discover_devices",
+      "description": "Discover Mijia devices",
+      "category": "device"
+    },
+    {
+      "name": "get_device_properties",
+      "description": "Get device property list",
+      "category": "device"
+    },
+    {
+      "name": "get_device_actions",
+      "description": "Get device action list",
+      "category": "device"
+    },
+    {
+      "name": "get_property_value",
+      "description": "Get device property value",
+      "category": "property"
+    },
+    {
+      "name": "set_property_value",
+      "description": "Set device property value",
+      "category": "property"
+    },
+    {
+      "name": "call_action",
+      "description": "Call device action",
+      "category": "action"
+    },
+    {
+      "name": "batch_set_properties",
+      "description": "Batch set property values for multiple devices",
+      "category": "property"
+    },
+    {
+      "name": "search_devices",
+      "description": "Search and filter devices",
+      "category": "device"
+    },
+    {
+      "name": "get_server_status",
+      "description": "Get server status information",
+      "category": "system"
+    },
+    {
+      "name": "clear_cache",
+      "description": "Clear resource cache",
+      "category": "system"
+    },
+    {
+      "name": "get_device_status",
+      "description": "Get device status information",
+      "category": "monitoring"
+    },
+    {
+      "name": "refresh_all_device_status",
+      "description": "Refresh all device status",
+      "category": "monitoring"
+    },
+    {
+      "name": "get_cached_device_status",
+      "description": "Get cached device status",
+      "category": "monitoring"
+    },
+    {
+      "name": "clear_status_cache",
+      "description": "Clear device status cache",
+      "category": "monitoring"
+    },
+    {
+      "name": "ping",
+      "description": "Test server connectivity",
+      "category": "system"
+    }
+  ],
+  "configuration": {
+    "environment_variables": [
+      "MIJIA_ENABLE_QR",
+      "MIJIA_USERNAME",
+      "MIJIA_PASSWORD",
+      "MIJIA_LOG_LEVEL"
+    ]
+  },
+  "transport": {
+    "type": "stdio",
+    "description": "Communicate using standard input/output"
+  },
+  "protocol": {
+    "name": "Model Context Protocol",
+    "version": "2024-11-05",
+    "transport": "JSON-RPC 2.0"
+  }
+}

@@ -1,4 +1,4 @@
-"""配置管理模块"""
+"""Configuration management module"""
 
 from .mijia_config import MijiaConfig, load_mijia_config
 

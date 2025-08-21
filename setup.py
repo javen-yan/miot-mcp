@@ -7,14 +7,14 @@ with open("requirements.txt", "r", encoding="utf-8") as fh:
     requirements = [line.strip() for line in fh if line.strip() and not line.startswith("#")]
 
 setup(
-    name="miot-agent",
-    version="2.0.0",
+    name="miot-mcp",
+    version="1.0.0",
     author="Javen Yan",
     author_email="2023335616@qq.com",
-    description="基于 MijiaAPI 的米家设备智能控制代理，提供标准化的 AI Agent 工具接口",
+    description="Mijia smart device MCP server, providing device discovery, property read/write, action invoke and other functions",
     long_description=long_description,
     long_description_content_type="text/markdown",
-    url="https://github.com/javen-yan/miot-agent",      
+    url="https://github.com/javen-yan/miot-mcp",      
     packages=find_packages(),
     classifiers=[
         "Development Status :: 4 - Beta",
@@ -34,20 +34,17 @@ setup(
     install_requires=requirements,
     extras_require={
         "dev": [
-            "pytest>=7.0.0",
-            "pytest-asyncio>=0.21.0",
-            "black>=22.0.0",
-            "flake8>=5.0.0"
+            "setuptools>=80.9.0",
         ],
         "docs": [
             "sphinx>=5.0.0",
             "sphinx-rtd-theme>=1.0.0",
         ],
     },
-    keywords="xiaomi mijia iot smart-home ai-agent automation",
+    keywords="xiaomi mijia iot smart-home mcp automation",
     project_urls={
-        "Bug Reports": "https://github.com/javen-yan/miot-agent/issues",
-        "Source": "https://github.com/javen-yan/miot-agent",
-        "Documentation": "https://github.com/javen-yan/miot-agent#readme",
+        "Bug Reports": "https://github.com/javen-yan/miot-mcp/issues",
+        "Source": "https://github.com/javen-yan/miot-mcp",
+        "Documentation": "https://github.com/javen-yan/miot-mcp#readme",
     },
 )
