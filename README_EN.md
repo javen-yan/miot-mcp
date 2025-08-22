@@ -170,6 +170,8 @@ After integration, you should see the following tools available in your AI assis
 - **Property Operations**: `get_property_value`, `set_property_value`, `batch_set_properties`
 - **Action Operations**: `call_action`
 - **Status Monitoring**: `get_device_status`, `refresh_all_device_status`
+- **Home Management**: `get_homes`, `get_consumable_items`
+- **Scene Management**: `get_scenes_list`, `run_scene`
 - **System Management**: `get_server_status`, `clear_cache`
 
 And these resources:
@@ -406,6 +408,59 @@ And these resources:
     "name": "ping",
     "arguments": {
       "message": "hello"
+    }
+  }
+}
+```
+
+### Home and Scene Management
+
+#### Get Home List
+```json
+{
+  "method": "tools/call",
+  "params": {
+    "name": "get_homes",
+    "arguments": {}
+  }
+}
+```
+
+#### Get Scene List
+```json
+{
+  "method": "tools/call",
+  "params": {
+    "name": "get_scenes_list",
+    "arguments": {
+      "home_id": "123456789"
+    }
+  }
+}
+```
+
+#### Run Scene
+```json
+{
+  "method": "tools/call",
+  "params": {
+    "name": "run_scene",
+    "arguments": {
+      "scene_id": "987654321"
+    }
+  }
+}
+```
+
+#### Get Consumable Items
+```json
+{
+  "method": "tools/call",
+  "params": {
+    "name": "get_consumable_items",
+    "arguments": {
+      "home_id": "123456789",
+      "owner_id": 12345
     }
   }
 }

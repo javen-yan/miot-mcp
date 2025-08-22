@@ -567,7 +567,7 @@ async def batch_set_properties(operations: List[Dict[str, Any]]) -> str:
                 results.append({
                     "index": i,
                     "success": False,
-                    "error": "缺少必要参数"
+                    "error": "missing required parameters"
                 })
                 continue
             
@@ -712,7 +712,7 @@ async def clear_cache() -> str:
     
     return json.dumps({
         "success": True,
-        "message": f"已清除 {cache_count} 个缓存项",
+        "message": f"Cache cleared, {cache_count} items removed",
         "cleared_count": cache_count
     }, ensure_ascii=False, indent=2)
 
@@ -799,7 +799,7 @@ async def get_cached_device_status(device_id: str = "") -> str:
     
     try:
         if device_id:
-            # 获取单个设备的缓存状态
+            # get cached status
             cached_status = adapter.get_cached_device_status(device_id)
             return json.dumps({
                 "success": True,
@@ -808,7 +808,7 @@ async def get_cached_device_status(device_id: str = "") -> str:
                 "found": cached_status is not None
             }, ensure_ascii=False, indent=2)
         else:
-            # 获取所有缓存状态
+            # get all cached status
             all_cached = adapter.get_all_cached_status()
             return json.dumps({
                 "success": True,
@@ -849,6 +849,151 @@ async def clear_status_cache() -> str:
         
     except Exception as e:
         logger.error(f"Failed to clear status cache: {e}")
+        return json.dumps({
+            "success": False,
+            "error": str(e)
+        }, ensure_ascii=False, indent=2)
+
+
+@mcp.tool()
+async def get_homes() -> str:
+    """Get home list
+
+    Returns:
+        JSON string of home list
+    """
+    adapter = get_adapter()
+    if not adapter:
+        return json.dumps({
+            "success": False,
+            "error": "Adapter not initialized"
+        }, ensure_ascii=False, indent=2)
+    
+    try:
+        if not adapter.connected:
+            await adapter.connect()
+        
+        homes = await adapter.get_homes()
+        return json.dumps({
+            "success": True,
+            "homes": homes,
+            "count": len(homes)
+        }, ensure_ascii=False, indent=2)
+        
+    except Exception as e:
+        logger.error(f"Failed to get homes: {e}")
+        return json.dumps({
+            "success": False,
+            "error": str(e)
+        }, ensure_ascii=False, indent=2)
+
+
+@mcp.tool()
+async def get_scenes_list(home_id: str) -> str:
+    """Get scene list for a specific home
+
+    Args:
+        home_id: Home ID
+
+    Returns:
+        JSON string of scene list
+    """
+    adapter = get_adapter()
+    if not adapter:
+        return json.dumps({
+            "success": False,
+            "error": "Adapter not initialized"
+        }, ensure_ascii=False, indent=2)
+    
+    try:
+        if not adapter.connected:
+            await adapter.connect()
+        
+        scenes = await adapter.get_scenes_list(home_id)
+        return json.dumps({
+            "success": True,
+            "home_id": home_id,
+            "scenes": scenes,
+            "count": len(scenes)
+        }, ensure_ascii=False, indent=2)
+        
+    except Exception as e:
+        logger.error(f"Failed to get scenes list: {e}")
+        return json.dumps({
+            "success": False,
+            "error": str(e)
+        }, ensure_ascii=False, indent=2)
+
+
+@mcp.tool()
+async def run_scene(scene_id: str) -> str:
+    """Run a specific scene
+
+    Args:
+        scene_id: Scene ID
+
+    Returns:
+        JSON string of execution result
+    """
+    adapter = get_adapter()
+    if not adapter:
+        return json.dumps({
+            "success": False,
+            "error": "Adapter not initialized"
+        }, ensure_ascii=False, indent=2)
+    
+    try:
+        if not adapter.connected:
+            await adapter.connect()
+        
+        result = await adapter.run_scene(scene_id)
+        return json.dumps({
+            "success": True,
+            "scene_id": scene_id,
+            "executed": result
+        }, ensure_ascii=False, indent=2)
+        
+    except Exception as e:
+        logger.error(f"Failed to run scene: {e}")
+        return json.dumps({
+            "success": False,
+            "error": str(e)
+        }, ensure_ascii=False, indent=2)
+
+
+@mcp.tool()
+async def get_consumable_items(home_id: str, owner_id: int = None) -> str:
+    """Get consumable items for a specific home
+
+    Args:
+        home_id: Home ID
+        owner_id: Owner ID (optional, for shared homes)
+
+    Returns:
+        JSON string of consumable items list
+    """
+    adapter = get_adapter()
+    if not adapter:
+        return json.dumps({
+            "success": False,
+            "error": "Adapter not initialized"
+        }, ensure_ascii=False, indent=2)
+    
+    try:
+        if not adapter.connected:
+            await adapter.connect()
+        
+        items = await adapter.get_consumable_items(home_id, owner_id)
+        return json.dumps({
+            "success": True,
+            "home_id": home_id,
+            "owner_id": owner_id,
+            "items": items,
+            "count": len(items)
+        }, ensure_ascii=False, indent=2)
+        
+    except Exception as e:
+        logger.error(f"Failed to get consumable items: {e}")
         return json.dumps({
             "success": False,
             "error": str(e)

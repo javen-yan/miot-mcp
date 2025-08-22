@@ -124,6 +124,26 @@
       "category": "monitoring"
     },
     {
+      "name": "get_homes",
+      "description": "Get home list",
+      "category": "home"
+    },
+    {
+      "name": "get_scenes_list",
+      "description": "Get scene list for a specific home",
+      "category": "scene"
+    },
+    {
+      "name": "run_scene",
+      "description": "Run a specific scene",
+      "category": "scene"
+    },
+    {
+      "name": "get_consumable_items",
+      "description": "Get consumable items for a specific home",
+      "category": "home"
+    },
+    {
       "name": "ping",
       "description": "Test server connectivity",
       "category": "system"

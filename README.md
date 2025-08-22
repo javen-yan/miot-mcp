@@ -166,6 +166,8 @@ python mcp_test.py
 - **属性操作**: `get_property_value`, `set_property_value`, `batch_set_properties`
 - **动作操作**: `call_action`
 - **状态监控**: `get_device_status`, `refresh_all_device_status`
+- **家庭管理**: `get_homes`, `get_consumable_items`
+- **场景管理**: `get_scenes_list`, `run_scene`
 - **系统管理**: `get_server_status`, `clear_cache`
 
 以及这些资源：
@@ -402,6 +404,59 @@ python mcp_test.py
     "name": "ping",
     "arguments": {
       "message": "hello"
+    }
+  }
+}
+```
+
+### 家庭和场景管理
+
+#### 获取家庭列表
+```json
+{
+  "method": "tools/call",
+  "params": {
+    "name": "get_homes",
+    "arguments": {}
+  }
+}
+```
+
+#### 获取场景列表
+```json
+{
+  "method": "tools/call",
+  "params": {
+    "name": "get_scenes_list",
+    "arguments": {
+      "home_id": "123456789"
+    }
+  }
+}
+```
+
+#### 执行场景
+```json
+{
+  "method": "tools/call",
+  "params": {
+    "name": "run_scene",
+    "arguments": {
+      "scene_id": "987654321"
+    }
+  }
+}
+```
+
+#### 获取耗材信息
+```json
+{
+  "method": "tools/call",
+  "params": {
+    "name": "get_consumable_items",
+    "arguments": {
+      "home_id": "123456789",
+      "owner_id": 12345
     }
   }
 }
