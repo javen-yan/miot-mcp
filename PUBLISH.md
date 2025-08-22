@@ -94,7 +94,7 @@ twine upload dist/*
 ## 📦 包信息
 
 - **包名**: `miot-mcp`
-- **版本**: `1.0.2`
+- **版本**: `1.0.3`
 - **描述**: Mijia smart device MCP server
 - **作者**: Javen Yan
 - **许可证**: MIT

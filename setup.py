@@ -8,7 +8,7 @@ with open("requirements.txt", "r", encoding="utf-8") as fh:
 
 setup(
     name="miot-mcp",
-    version="1.0.2",
+    version="1.0.3",
     author="Javen Yan",
     author_email="2023335616@qq.com",
     description="Mijia smart device MCP server, providing device discovery, property read/write, action invoke and other functions",

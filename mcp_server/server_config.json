@@ -1,6 +1,6 @@
 {
   "name": "mijia-mcp-server",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "Mijia smart device MCP server, providing device discovery, property read/write, action invoke and other functions",
   "author": "Mijia MCP Team",
   "license": "MIT",

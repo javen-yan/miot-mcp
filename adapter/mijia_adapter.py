@@ -11,6 +11,7 @@ import time
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from PIL import Image
+from qrcode import QRCode
 
 _LOGGER = get_logger(__name__)
 
@@ -28,6 +29,47 @@ class MijiaAdapter:
         self._last_status_update: Optional[datetime] = None
         self._config = load_mijia_config()
         self._auth_manager = AuthDataManager()
+        # Patch mijiaAPI to avoid encoding issues with QR code display
+        self._patch_qr_display()
+    
+    def _patch_qr_display(self):
+        """Patch mijiaAPI's QR display method to avoid encoding issues
+        
+        The original mijiaAPI._print_qr method tries to print Unicode block characters
+        to the terminal using qr.print_ascii(), which causes GBK encoding errors on
+        systems where the default encoding can't handle these characters.
+        
+        This patch replaces the method to only save the QR code as a PNG file,
+        avoiding the problematic ASCII output while maintaining functionality.
+        """
+        def safe_print_qr(loginurl: str, box_size: int = 10) -> None:
+            """Safe QR code display that avoids encoding issues"""
+            _LOGGER.info('请使用米家APP扫描二维码')
+            _LOGGER.info('QR code will be saved as qr.png in current directory')
+            try:
+                qr = QRCode(border=1, box_size=box_size)
+                qr.add_data(loginurl)
+                qr.make_image().save('qr.png')
+                _LOGGER.info('QR code saved successfully as qr.png')
+                # 尝试显示二维码图片
+                try:
+                    img = Image.open('qr.png')
+                    img.show()
+                except Exception as e:
+                    _LOGGER.error(f'Failed to show QR code: {e}')
+
+                # 尝试打印二维码到终端
+                try:
+                    qr.print_ascii(invert=True, tty=True)
+                except Exception as e:
+                    _LOGGER.error(f'Failed to print QR code in terminal, saving as image only {e}')
+                
+            except Exception as e:
+                _LOGGER.error(f'Failed to save QR code: {e}')
+                raise
+        
+        # Replace the problematic _print_qr method
+        mijiaLogin._print_qr = staticmethod(safe_print_qr)
         
     async def connect(self) -> bool:
         """Connect to Mijia cloud service
@@ -58,7 +100,7 @@ class MijiaAdapter:
                 
                 if self._config.enableQR:
                     _LOGGER.info("Using QR code login mode")
-                    self._auth_data = self._qr_login_with_display(login)
+                    self._auth_data = login.QRlogin()
                 else:
                     _LOGGER.info(f"Using username/password login: {self._config.username}")
                     if not self._config.username or not self._config.password:
@@ -109,68 +151,6 @@ class MijiaAdapter:
             self._api = None
             
             return False
-
-    def _qr_file_monitor(self, qr_png_path, stop_event):
-        """Monitor for QR PNG file creation and display it"""
-        _LOGGER.info("Starting QR file monitor thread...")
-        
-        while not stop_event.is_set():
-            if qr_png_path.exists():
-                _LOGGER.info(f"QR PNG file detected: {qr_png_path}")
-                try:
-                    if Image:
-                        # Open and display the QR code image
-                        img = Image.open(qr_png_path)
-                        _LOGGER.info("Displaying QR code image...")
-                        img.show()
-                        _LOGGER.info("QR code image displayed. Please scan with Mi Home app.")
-                    else:
-                        _LOGGER.warning("PIL not available, cannot display QR code image")
-                        _LOGGER.info(f"QR code saved to: {qr_png_path}")
-                    break
-                except Exception as e:
-                    _LOGGER.error(f"Error displaying QR image: {e}")
-                    break
-            
-            # Check every 0.5 seconds
-            time.sleep(0.5)
-        
-        _LOGGER.info("QR file monitor thread stopped.")
-
-    def _qr_login_with_display(self, login):
-        """QR login with automatic image display"""
-        # Get current working directory
-        current_dir = Path.cwd()
-        qr_png_path = current_dir / "qr.png"
-        
-        # Remove existing qr.png if it exists
-        if qr_png_path.exists():
-            _LOGGER.info("Removing existing qr.png file...")
-            qr_png_path.unlink()
-        
-        # Create stop event for the monitor thread
-        stop_event = threading.Event()
-        
-        # Start QR file monitor thread
-        monitor_thread = threading.Thread(
-            target=self._qr_file_monitor, 
-            args=(qr_png_path, stop_event),
-            daemon=True
-        )
-        monitor_thread.start()
-        
-        try:
-            # Call QRlogin - this should generate qr.png
-            auth_data = login.QRlogin()
-            return auth_data
-        except Exception as e:
-            _LOGGER.error(f"QR login failed: {e}")
-            raise
-        finally:
-            # Stop the monitor thread
-            stop_event.set()
-            # Wait for monitor thread to complete or timeout
-            monitor_thread.join(timeout=2)
 
     async def disconnect(self):
         """Disconnect"""

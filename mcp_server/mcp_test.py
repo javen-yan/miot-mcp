@@ -54,7 +54,7 @@ async def test_fastmcp_server():
                 "capabilities": {},
                 "clientInfo": {
                     "name": "test-client",
-                    "version": "1.0.2"
+                    "version": "1.0.3"
                 }
             }
         }

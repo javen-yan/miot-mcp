@@ -142,7 +142,7 @@ async def get_config_resource() -> str:
             "device_count": adapter.device_count,
             "server_info": {
                 "name": "mijia-mcp-server",
-                "version": "1.0.2",
+                "version": "1.0.3",
                 "capabilities": ["tools", "resources"]
             },
             "timestamp": asyncio.get_event_loop().time()
@@ -773,7 +773,7 @@ async def get_server_status() -> str:
     status_info = {
         "server": {
             "name": "mijia-mcp-server",
-            "version": "1.0.2",
+            "version": "1.0.3",
             "uptime": asyncio.get_event_loop().time(),
             "capabilities": ["tools", "resources"]
         },
