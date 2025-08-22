@@ -502,6 +502,26 @@ class MijiaAdapter:
             _LOGGER.error(f"Failed to run scene: {e}")
             raise
 
+    async def get_consumable_items(self, home_id: str, owner_id: Optional[int] = None) -> List[Dict[str, Any]]:
+        """Get consumable item list
+
+        Args:
+            home_id (str): home_id from get_homes_list
+            owner_id (int, optional): UserID,default is None, provide owner_id when home_id is shared
+
+        Returns:
+            List[Dict[str, Any]]: Consumable item list
+        """
+        if not self._connected:
+            raise RuntimeError("Not connected to Mijia cloud service")
+        
+        try:
+            items = self._api.get_consumable_items(home_id, owner_id)
+            return items
+        except Exception as e:
+            _LOGGER.error(f"Failed to get consumable item list: {e}")
+            raise
+
     def _get_device(self, device_id: str) -> mijiaDevice:
         """Get device object
 
