@@ -2,7 +2,7 @@
 
 import logging
 from typing import Dict, List, Any, Optional
-from mijiaAPI import mijiaAPI, mijiaDevice, mijiaLogin
+from mijiaAPI import mijiaAPI, mijiaDevice, mijiaLogin, get_device_info
 from config.mijia_config import load_mijia_config, MijiaConfig
 import json
 import traceback
@@ -10,75 +10,10 @@ from datetime import datetime
 import threading
 import time
 from pathlib import Path
-try:
-    from PIL import Image
-except ImportError:
-    Image = None
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from PIL import Image
 
 _LOGGER = logging.getLogger(__name__)
-
-class DevProp(object):
-    def __init__(self, prop_dict: dict):
-        """
-    Initialize property object.
-
-    Args:
-        prop_dict (dict): Property dictionary.
-
-    Raises:
-        ValueError: If property type is not supported.
-    """
-        self.name = prop_dict['name']
-        self.desc = prop_dict['description']
-        self.type = prop_dict['type']
-        if self.type not in ['bool', 'int', 'uint', 'float', 'string']:
-            raise ValueError(f'Unsupported type: {self.type}, available types: bool, int, uint, float, string')
-        self.rw = prop_dict['rw']
-        self.unit = prop_dict['unit']
-        self.range = prop_dict['range']
-        self.value_list = prop_dict.get('value-list', None)
-        self.method = prop_dict['method']
-
-    def __str__(self):
-        """
-    Return string representation of the property.
-
-    Returns:
-        str: Property name, description, type, read/write permissions, unit and range.
-    """
-        lines = [
-            f"  {self.name}: {self.desc}",
-            f"    valuetype: {self.type}, rw: {self.rw}, unit: {self.unit}, range: {self.range}"
-        ]
-
-        if self.value_list:
-            value_lines = [f"    {item['value']}: {item['description']}" for item in self.value_list]
-            lines.extend(value_lines)
-
-        return '\n'.join(lines)
-
-
-class DevAction(object):
-    def __init__(self, act_dict: dict):
-        """
-    Initialize action object.
-
-    Args:
-        act_dict (dict): Action dictionary.
-    """
-        self.name = act_dict['name']
-        self.desc = act_dict['description']
-        self.method = act_dict['method']
-
-    def __str__(self):
-        """
-    Return string representation of the action.
-
-    Returns:
-        str: Action name and description.
-    """
-        return f'  {self.name}: {self.desc}'
-
 
 class MijiaAdapter:
     """Mijia device adapter"""
@@ -245,8 +180,40 @@ class MijiaAdapter:
         except Exception as e:
             _LOGGER.error(f"Error during disconnection: {e}")
     
-    async def discover_devices(self) -> List[mijiaDevice]:
-        """Discover devices
+    def _create_device_sync(self, device_data: Dict[str, Any], index: int) -> tuple:
+        """同步创建设备对象的辅助方法
+        
+        Args:
+            device_data: 设备数据
+            index: 设备索引
+            
+        Returns:
+            tuple: (success: bool, device: mijiaDevice or None, error_info: str or None)
+        """
+        try:
+            did = device_data.get("did")
+            if not did:
+                return False, None, f"Device{index}(missing did)"
+            
+            model = device_data.get("model")
+            if not model:
+                return False, None, f"Device{index}(missing model)"
+            
+            # 获取设备信息（这是耗时操作）
+            dev_info = get_device_info(model)
+            device = mijiaDevice(self._api, dev_info=dev_info, did=did)
+            
+            return True, device, None
+            
+        except Exception as e:
+            device_name = device_data.get('name', f'Device{index}')
+            return False, None, device_name
+    
+    async def discover_devices(self, max_workers: int = 5) -> List[mijiaDevice]:
+        """Discover devices with concurrent processing
+        
+        Args:
+            max_workers: 最大并发工作线程数，默认为5
 
         Returns:
             List[mijiaDevice]: List of discovered devices
@@ -267,29 +234,36 @@ class MijiaAdapter:
                 return []
             
             _LOGGER.info(f"Retrieved {len(raw_device_infos)} device information from cloud")
+            _LOGGER.info(f"Using concurrent processing with {max_workers} workers to optimize performance")
             
             device_infos = []
             failed_devices = []
             
-            for i, device_data in enumerate(raw_device_infos):
-                try:
-                    did = device_data.get("did")
-                    if not did:
-                        _LOGGER.warning(f"Device {i} missing did field, skipping")
-                        failed_devices.append(f"Device{i}(missing did)")
-                        continue
-                    
-                    device = mijiaDevice(self._api, dev_info=device_data, did=did)
-                    self._devices[did] = device
-                    device_infos.append(device)
-                    
-                    _LOGGER.debug(f"Successfully created device object: {device.name} ({did})")
-                    
-                except Exception as device_e:
-                    device_name = device_data.get('name', f'Device{i}')
-                    _LOGGER.warning(f"Failed to create device object {device_name}: {device_e}")
-                    failed_devices.append(device_name)
-                    continue
+            # 使用线程池并发处理设备信息获取
+            with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                # 提交所有任务
+                future_to_index = {
+                    executor.submit(self._create_device_sync, device_data, i): i 
+                    for i, device_data in enumerate(raw_device_infos)
+                }
+                
+                # 处理完成的任务
+                for future in as_completed(future_to_index):
+                    index = future_to_index[future]
+                    try:
+                        success, device, error_info = future.result()
+                        
+                        if success and device:
+                            self._devices[device.did] = device
+                            device_infos.append(device)
+                            _LOGGER.debug(f"Successfully created device object: {device.name} ({device.did})")
+                        else:
+                            failed_devices.append(error_info or f"Device{index}")
+                            _LOGGER.warning(f"Failed to create device {index}: {error_info}")
+                            
+                    except Exception as e:
+                        failed_devices.append(f"Device{index}")
+                        _LOGGER.warning(f"Exception processing device {index}: {e}")
             
             success_count = len(device_infos)
             failed_count = len(failed_devices)
@@ -322,37 +296,35 @@ class MijiaAdapter:
         except FileNotFoundError:
             return None
     
-    async def get_device_properties(self, device_id: str) -> List[DevProp]:
+    async def get_device_properties(self, device_id: str) -> List:
         """Get device property list
 
         Args:
             device_id: Device ID
 
         Returns:
-            List[DevProp]: Device property list
+            List: Device property list
         """
         device = self._get_device(device_id)
         
         try:
             # Get device specification information
             propsMap = device.prop_list
-            props = []
-            for prop in propsMap:
-                prop = DevProp(prop)
-                props.append(prop)
-            return props
+            if not propsMap:
+                return []
+            return list(map(lambda x: x, propsMap.values()))
         except Exception as e:
             _LOGGER.error(f"Failed to get device properties for {device_id}: {e}")
             raise
     
-    async def get_device_actions(self, device_id: str) -> List[DevAction]:
+    async def get_device_actions(self, device_id: str) -> List:
         """Get device action list
 
         Args:
             device_id: Device ID
 
         Returns:
-            List[DevAction]: Device action list
+            List: Device action list
         """
         if not self._connected:
             raise RuntimeError("Not connected to Mijia cloud service")
@@ -362,11 +334,9 @@ class MijiaAdapter:
         
         try:
             device = self._devices[device_id]
-            actionsMap = device.action_list
-            actions = []
-            for act in actionsMap:
-                actions.append(DevAction(act))
-            return actions
+            if not device.action_list:
+                return []
+            return list(map(lambda x: x, device.action_list.values()))
         except Exception as e:
             _LOGGER.error(f"Failed to get device operations: {e}")
             raise
@@ -479,6 +449,59 @@ class MijiaAdapter:
             _LOGGER.error(f"Failed to execute action: {e}")
             raise
     
+    async def get_homes(self) -> List[Dict[str, Any]]:
+        """Get home list
+
+        Returns:
+            List[Dict[str, Any]]: Home list
+        """
+        if not self._connected:
+            raise RuntimeError("Not connected to Mijia cloud service")
+        
+        try:
+            homes = self._api.get_homes_list()
+            return homes
+        except Exception as e:
+            _LOGGER.error(f"Failed to get home list: {e}")
+            raise
+
+    async def get_scenes_list(self, home_id: str) -> List[Dict[str, Any]]:
+        """Get scene list
+
+        Args:
+            home_id: Home ID
+
+        Returns:
+            List[Dict[str, Any]]: Scene list
+        """
+        if not self._connected:
+            raise RuntimeError("Not connected to Mijia cloud service")
+        
+        try:
+            scenes = self._api.get_scenes_list(home_id)
+            return scenes
+        except Exception as e:
+            _LOGGER.error(f"Failed to get scene list: {e}")
+            raise
+
+    async def run_scene(self, scene_id: str) -> bool:
+        """Run scene
+
+        Args:
+            scene_id: Scene ID
+
+        Returns:
+            bool: Whether running is successful
+        """
+        if not self._connected:
+            raise RuntimeError("Not connected to Mijia cloud service")
+        
+        try:
+            return await self._api.run_scene(scene_id)
+        except Exception as e:
+            _LOGGER.error(f"Failed to run scene: {e}")
+            raise
+
     def _get_device(self, device_id: str) -> mijiaDevice:
         """Get device object
 
