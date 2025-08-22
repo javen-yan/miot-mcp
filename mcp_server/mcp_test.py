@@ -6,7 +6,6 @@ Test FastMCP-based Mijia MCP server functionality.
 
 import asyncio
 import json
-import logging
 import sys
 from pathlib import Path
 
@@ -15,12 +14,13 @@ project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
 from config.mijia_config import load_mijia_config
+from utils.logger import setup_logging, get_logger
 
 default_config = load_mijia_config()
 
-# Configure logging
-logging.basicConfig(level=default_config.log_level)
-logger = logging.getLogger(__name__)
+# Setup logging using unified logger component
+setup_logging(default_config.log_level)
+logger = get_logger(__name__)
 
 
 async def test_fastmcp_server():
@@ -54,7 +54,7 @@ async def test_fastmcp_server():
                 "capabilities": {},
                 "clientInfo": {
                     "name": "test-client",
-                    "version": "1.0.1"
+                    "version": "1.0.2"
                 }
             }
         }

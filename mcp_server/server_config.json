@@ -1,6 +1,6 @@
 {
   "name": "mijia-mcp-server",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Mijia smart device MCP server, providing device discovery, property read/write, action invoke and other functions",
   "author": "Mijia MCP Team",
   "license": "MIT",
@@ -39,6 +39,18 @@
       "uri": "mijia://device/{device_id}/actions",
       "name": "Device Actions",
       "description": "All available actions for specified device",
+      "mimeType": "application/json"
+    },
+    {
+      "uri": "mijia://homes",
+      "name": "Home List",
+      "description": "All available homes",  
+      "mimeType": "application/json"
+    },
+    {
+      "uri": "mijia://home/{home_id}/scenes",
+      "name": "Home Scenes",
+      "description": "All scenes in specified home",
       "mimeType": "application/json"
     }
   ],

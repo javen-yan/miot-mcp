@@ -1,10 +1,9 @@
 """Mijia device adapter based on MijiaAPI"""
-
-import logging
 from typing import Dict, List, Any, Optional
 from mijiaAPI import mijiaAPI, mijiaDevice, mijiaLogin, get_device_info
 from config.mijia_config import load_mijia_config, MijiaConfig
-import json
+from utils.logger import get_logger
+from utils.auth_manager import AuthDataManager
 import traceback
 from datetime import datetime
 import threading
@@ -13,7 +12,7 @@ from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from PIL import Image
 
-_LOGGER = logging.getLogger(__name__)
+_LOGGER = get_logger(__name__)
 
 class MijiaAdapter:
     """Mijia device adapter"""
@@ -28,6 +27,7 @@ class MijiaAdapter:
         self._device_status_cache: Dict[str, Dict[str, Any]] = {}
         self._last_status_update: Optional[datetime] = None
         self._config = load_mijia_config()
+        self._auth_manager = AuthDataManager()
         
     async def connect(self) -> bool:
         """Connect to Mijia cloud service
@@ -44,13 +44,17 @@ class MijiaAdapter:
                 raise ValueError(error_msg)
 
             login = mijiaLogin()
-            auth_data = self._load_auth_data()
+            auth_data = self._auth_manager.load()
             
-            if auth_data:
+            if auth_data and self._auth_manager.validate(auth_data):
                 self._auth_data = auth_data
-                _LOGGER.info("Successfully loaded authentication data from file")
+                _LOGGER.info("Successfully loaded and validated authentication data from file")
             else:
-                _LOGGER.info("No cached authentication data found, starting login...")
+                if auth_data:
+                    _LOGGER.warning("Cached authentication data is invalid, starting fresh login...")
+                    self._auth_manager.clear()
+                else:
+                    _LOGGER.info("No cached authentication data found, starting login...")
                 
                 if self._config.enableQR:
                     _LOGGER.info("Using QR code login mode")
@@ -65,8 +69,10 @@ class MijiaAdapter:
                     self._auth_data = login.login(self._config.username, self._config.password)
 
                 if self._auth_data:
-                    self._save_auth_data(self._auth_data)
-                    _LOGGER.info("Login successful, authentication data saved")
+                    if self._auth_manager.save(self._auth_data):
+                        _LOGGER.info("Login successful, authentication data saved")
+                    else:
+                        _LOGGER.warning("Login successful, but failed to save authentication data")
                 else:
                     error_msg = "Login failed, authentication data not obtained"
                     _LOGGER.error(error_msg)
@@ -86,13 +92,10 @@ class MijiaAdapter:
                 _LOGGER.error(error_msg)
                 # 清除可能过期的认证数据
                 self._auth_data = None
-                try:
-                    import os
-                    if os.path.exists('auth_data.json'):
-                        os.remove('auth_data.json')
-                        _LOGGER.info("Expired authentication data file cleared")
-                except Exception as cleanup_e:
-                    _LOGGER.warning(f"Failed to clear authentication data file: {cleanup_e}")
+                if self._auth_manager.clear():
+                    _LOGGER.info("Expired authentication data cleared")
+                else:
+                    _LOGGER.warning("Failed to clear expired authentication data")
                 
                 raise RuntimeError(error_msg)
                 
@@ -179,6 +182,33 @@ class MijiaAdapter:
             _LOGGER.info("Disconnected from Mijia cloud service")
         except Exception as e:
             _LOGGER.error(f"Error during disconnection: {e}")
+    
+    def clear_auth_data(self) -> bool:
+        """清除认证数据
+        
+        Returns:
+            bool: 是否清除成功
+        """
+        self._auth_data = None
+        return self._auth_manager.clear()
+    
+    def has_valid_auth_data(self) -> bool:
+        """检查是否有有效的认证数据
+        
+        Returns:
+            bool: 是否有有效的认证数据
+        """
+        if self._auth_data:
+            return self._auth_manager.validate(self._auth_data)
+        return self._auth_manager.exists() and self._auth_manager.validate()
+    
+    def get_auth_file_path(self) -> Path:
+        """获取认证数据文件路径
+        
+        Returns:
+            Path: 认证数据文件路径
+        """
+        return self._auth_manager.get_file_path()
     
     def _create_device_sync(self, device_data: Dict[str, Any], index: int) -> tuple:
         """同步创建设备对象的辅助方法
@@ -283,19 +313,6 @@ class MijiaAdapter:
             _LOGGER.debug(f"Detailed error information: {traceback.format_exc()}")
             raise RuntimeError(error_msg) from e
 
-    def _save_auth_data(self, auth_data: Dict[str, Any]):
-        """Save authentication data"""
-        with open('auth_data.json', 'w') as f:
-            json.dump(auth_data, f)
-
-    def _load_auth_data(self) -> Optional[Dict[str, Any]]:
-        """Load authentication data"""
-        try:
-            with open('auth_data.json', 'r') as f:
-                return json.load(f)
-        except FileNotFoundError:
-            return None
-    
     async def get_device_properties(self, device_id: str) -> List:
         """Get device property list
 

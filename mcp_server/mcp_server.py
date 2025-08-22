@@ -6,7 +6,6 @@ Use FastMCP framework to simplify MCP server implementation, avoiding the comple
 
 import asyncio
 import json
-import logging
 import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -18,17 +17,17 @@ sys.path.insert(0, str(project_root))
 from mcp.server.fastmcp import FastMCP
 from adapter.mijia_adapter import MijiaAdapter
 from config.mijia_config import load_mijia_config
+from utils.logger import setup_logging, get_logger
 
 # Load environment configuration
 default_config = load_mijia_config()
 
-# Configure logging - use stderr to avoid interfering with stdio communication
-logging.basicConfig(
-    level=default_config.log_level,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    stream=sys.stderr  # Important: use stderr instead of stdout
-)
-logger = logging.getLogger(__name__)
+# Setup logging and get log file path
+log_file_path = setup_logging(default_config.log_level)
+logger = get_logger(__name__)
+
+# Log the log file location
+logger.info(f"Logging to file: {log_file_path}")
 
 # Create FastMCP server instance
 mcp = FastMCP("mijia-mcp-server")
@@ -143,7 +142,7 @@ async def get_config_resource() -> str:
             "device_count": adapter.device_count,
             "server_info": {
                 "name": "mijia-mcp-server",
-                "version": "1.0.1",
+                "version": "1.0.2",
                 "capabilities": ["tools", "resources"]
             },
             "timestamp": asyncio.get_event_loop().time()
@@ -264,6 +263,100 @@ async def get_device_actions_resource(device_id: str) -> str:
             "error": str(e),
             "device_id": device_id,
             "actions": []
+        }, ensure_ascii=False, indent=2)
+
+    
+@mcp.resource("mijia://homes")
+async def get_homes_resource() -> str:
+    """Get homes resource
+
+    Returns:
+        JSON string of homes
+    """
+    adapter = get_adapter()
+    if not adapter:
+        return json.dumps({
+            "error": "Adapter not initialized",
+            "homes": []
+        }, ensure_ascii=False, indent=2)
+    
+    try:
+        homes = await adapter.get_homes()
+        home_list = []
+        for home in homes:
+            home_info = {
+                "id": home.id,
+                "name": home.name,
+                "device_count": home.device_count
+            }
+            home_list.append(home_info)
+        
+        result = {
+            "homes": home_list,
+            "count": len(home_list),
+            "timestamp": asyncio.get_event_loop().time()
+        }
+        
+        # Cache result
+        _resource_cache["homes"] = result
+        
+        return json.dumps(result, ensure_ascii=False, indent=2)
+        
+    except Exception as e:
+        logger.error(f"Failed to get homes: {e}")
+        return json.dumps({
+            "error": str(e),
+            "homes": []
+        }, ensure_ascii=False, indent=2)
+
+
+@mcp.resource("mijia://home/{home_id}/scenes")
+async def get_home_scenes_resource(home_id: str) -> str:
+    """Get home scenes resource
+
+    Args:
+        home_id: Home ID
+
+    Returns:
+        JSON string of home scenes
+    """
+    adapter = get_adapter()
+    if not adapter:
+        return json.dumps({
+            "error": "Adapter not initialized",
+            "home_id": home_id,
+            "scenes": []
+        }, ensure_ascii=False, indent=2)
+
+    try:
+        scenes = await adapter.get_home_scenes(home_id)
+        scene_list = []
+        for scene in scenes:
+            scene_info = {
+                "id": scene.id,
+                "name": scene.name,
+                "device_count": scene.device_count
+            }
+            scene_list.append(scene_info)
+        
+        result = {
+            "home_id": home_id,
+            "scenes": scene_list,
+            "count": len(scene_list),
+            "timestamp": asyncio.get_event_loop().time()
+        }
+        
+        # Cache result
+        _resource_cache[f"home_{home_id}_scenes"] = result
+        
+        return json.dumps(result, ensure_ascii=False, indent=2)
+        
+    except Exception as e:
+        logger.error(f"Failed to get home scenes: {e}")
+        return json.dumps({
+            "error": str(e),
+            "home_id": home_id,
+            "scenes": []
         }, ensure_ascii=False, indent=2)
 
 
@@ -680,7 +773,7 @@ async def get_server_status() -> str:
     status_info = {
         "server": {
             "name": "mijia-mcp-server",
-            "version": "1.0.1",
+            "version": "1.0.2",
             "uptime": asyncio.get_event_loop().time(),
             "capabilities": ["tools", "resources"]
         },
