@@ -4,21 +4,19 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "miot-mcp"
-version = "1.0.3"
+version = "2.0.0"
 authors = [
     {name = "Javen Yan", email = "2023335616@qq.com"},
 ]
 description = "Mijia smart device MCP server, providing device discovery, property read/write, action invoke and other functions"
 readme = "README.md"
-requires-python = ">=3.8"
+requires-python = ">=3.10,<4.0"
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
     "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.8",
-    "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
@@ -28,8 +26,9 @@ classifiers = [
 keywords = ["xiaomi", "mijia", "iot", "smart-home", "mcp", "automation"]
 dependencies = [
     "mcp>=1.13.0",
-    "mijiaAPI>=2.0.1",
+    "mijiaAPI>=3.0.5",
     "Pillow>=10.0.0",
+    "qrcode[pil]>=8.2",
 ]
 
 [project.optional-dependencies]
@@ -51,6 +50,9 @@ docs = [
 
 [project.scripts]
 miot-mcp = "mcp_server.mcp_server:main"
+
+[tool.poetry]
+package-mode = false
 
 [tool.setuptools.packages.find]
 where = ["."]  # list of folders that contain the packages (["src"] by default)

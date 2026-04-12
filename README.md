@@ -1,104 +1,152 @@
-# 米家智能设备 MCP 服务器
+# 米家 MCP Server
 
 中文文档 | [English](README_EN.md)
 
-基于 Model Context Protocol (MCP) 的米家智能设备控制服务器，提供设备发现、属性读写、动作调用、状态监控等功能。
+一个基于 `mijiaAPI 3.x` 的产品化米家 MCP 服务。它不再要求客户端先理解 `did`、`siid/piid/aiid` 这些协议细节，而是优先面向“家庭、房间、设备名、场景名”提供更自然的查询和控制能力。
 
-## 功能特性
+## 这版解决什么问题
 
-### 🔌 连接管理
-- 支持用户名密码登录
-- 支持二维码登录
-- 自动保存和加载认证信息
-- 连接状态监控
+- 面向 AI 客户端：优先暴露稳定、清晰的产品级工具，而不是底层协议字段
+- 面向真实家庭场景：先看家庭与房间，再定位设备，再执行控制
+- 面向 MCP 标准：工具返回结构化结果，服务状态和登录状态可直接被客户端消费
+- 面向扩展：标准能力 schema、profile 驱动控制、资源模型可以继续演进
 
-### 📱 设备管理
-- 自动发现米家设备
-- 设备搜索和过滤
-- 获取设备属性和动作列表
-- 批量操作支持
+## 当前能力
 
-### 📊 状态监控
-- 实时设备状态获取
-- 设备状态缓存
-- 批量状态刷新
-- 状态变化追踪
+### 服务与登录
+- `get_service_status`
+- `prepare_login`
+- `reconnect_service`
+- `clear_saved_login`
+- `refresh_devices`
+- `get_tool_catalog`
+- `ping`
 
-### 🛠️ 系统功能
-- 资源缓存管理
-- 详细错误处理和日志
-- 服务器状态监控
-- 连通性测试
+### 家庭与设备
+- `get_home_overview`
+- `list_homes`
+- `list_devices`
+- `get_device`
+- `get_device_status`
+- `get_device_capabilities`
 
-## 功能展示
+### 设备控制
+- `control_by_intent`
+- `control_device`
+- `turn_on_device`
+- `turn_off_device`
+- `set_brightness`
+- `set_color_temperature`
+- `set_target_temperature`
+- `set_hvac_mode`
+- `set_fan_speed`
+- `set_cover_position`
 
-### 🎯 核心功能
-![功能特性](static/feature.png)
+### 场景与耗材
+- `list_scenes`
+- `execute_scene`
+- `get_consumable_items`
 
-### 🔍 设备发现
-![设备发现](static/discover-devices.png)
+### MCP 资源
+- `mijia://service`
+- `mijia://homes`
+- `mijia://devices`
+- `mijia://scenes`
+- `mijia://capabilities`
+- `mijia://tooling`
 
-### 📱 设备信息
-![设备信息](static/device-info.png)
+## 安装
 
-### 🛠️ 工具列表
-![工具列表](static/tools.png)
+建议使用 Python `3.10+`。
 
-### 🖥️ 服务器状态
-![服务器状态](static/server-info.png)
+```bash
+poetry install
+```
 
-...
-
-## 快速开始
-
-### 1. 安装依赖
+如果你不用 Poetry：
 
 ```bash
 pip install -r requirements.txt
 ```
 
-### 2. 配置认证信息
-
-设置环境变量：
+## 启动
 
 ```bash
-export MIJIA_USERNAME="your_username"
-export MIJIA_PASSWORD="your_password"
-export MIJIA_ENABLE_QR="false"
+poetry run python mcp_server/mcp_server.py
+```
+
+测试握手：
+
+```bash
+poetry run python mcp_server/mcp_test.py
+```
+
+## 登录方式
+
+`mijiaAPI 3.x` 已移除账号密码登录，只支持二维码登录。
+
+首次需要登录时，服务会：
+
+- 生成浏览器页：`~/.miot-mcp/qr.html`
+- 同时生成二维码图片：`~/.miot-mcp/qr.png`
+- 默认优先用系统浏览器打开 `qr.html`
+- 只有浏览器打不开时，才回退到图片查看器或终端二维码
+
+认证信息会保存到：
+
+```text
+~/.miot-mcp/auth_data.json
+```
+
+### 推荐登录主路径
+
+1. 调用 `prepare_login`
+2. 调用 `get_service_status`
+3. 读取 `service.qr.page_path` 或 `service.qr.image_path`
+4. 完成扫码后调用 `reconnect_service` 或直接 `refresh_devices`
+
+### 登录相关状态
+
+`get_service_status` 和 `mijia://service` 都会返回结构化登录状态，重点字段包括：
+
+- `service.connected`
+- `service.has_saved_login`
+- `service.qr.open_mode`
+- `service.qr.page_path`
+- `service.qr.image_path`
+- `service.qr.login_url`
+- `assistant_summary`
+- `next_steps.should_scan_qr`
+
+## 环境变量
+
+```bash
+export MIJIA_ENABLE_QR="true"
+export MIJIA_QR_OPEN_MODE="browser"
 export MIJIA_LOG_LEVEL="INFO"
 ```
 
-### 3. 启动服务器
+说明：
 
-```bash
-python mcp_server/mcp_server.py
-```
+- `MIJIA_ENABLE_QR`：是否启用二维码登录，默认 `true`
+- `MIJIA_QR_OPEN_MODE`：高级配置，支持 `browser` / `viewer` / `none`，默认 `browser`
+- `MIJIA_LOG_LEVEL`：日志级别，支持 `DEBUG` / `INFO` / `WARNING` / `ERROR`
 
-### 4. 测试连接
+## MCP 客户端配置示例
 
-```bash
-python mcp_test.py
-```
-
-## AI 工具集成
-
-### Claude Desktop 集成
-
-在 Claude Desktop 配置文件中添加以下配置：
-
-**macOS**: `~/Library/Application Support/Claude/claude_desktop_config.json`
-**Windows**: `%APPDATA%\Claude\claude_desktop_config.json`
+推荐直接使用虚拟环境里的 Python，而不是 `poetry run`。
 
 ```json
 {
   "mcpServers": {
     "mijia": {
-      "command": "python",
-      "args": ["/path/to/miot-agent/mcp_server/mcp_server.py"],
+      "command": "/path/to/venv/bin/python",
+      "args": [
+        "/path/to/miot-mcp/mcp_server/mcp_server.py"
+      ],
       "env": {
-        "MIJIA_USERNAME": "your_username",
-        "MIJIA_PASSWORD": "your_password",
-        "MIJIA_ENABLE_QR": "false",
+        "MIJIA_ENABLE_QR": "true",
+        "MIJIA_QR_OPEN_MODE": "browser",
         "MIJIA_LOG_LEVEL": "INFO"
       }
     }
@@ -106,554 +154,189 @@ python mcp_test.py
 }
 ```
 
-### Continue.dev 集成
+## 推荐调用路径
 
-在 Continue 配置中添加：
+对于大多数 AI 客户端，建议优先这样使用：
+
+1. `prepare_login`
+2. `get_service_status`
+3. `refresh_devices`
+4. `get_home_overview`
+5. `get_device_status`
+6. `control_by_intent`
+7. `list_scenes`
+8. `execute_scene`
+
+如果客户端需要更稳定、更显式的路由，再补充：
+
+1. `list_homes`
+2. `list_devices`
+3. `get_device`
+4. `get_device_capabilities`
+5. `control_device`
+
+## 常用工具说明
+
+### `prepare_login`
+
+主动准备二维码登录。默认优先复用已有二维码页；如果需要重新走一轮扫码，可以传 `force_reauth=true`。
+
+### `get_service_status`
+
+返回服务连接状态、认证文件路径、日志路径、二维码页路径、下一步建议。
+
+### `get_home_overview`
+
+按家庭和房间输出设备总览，适合客户端先理解家庭结构。
+
+### `get_device_status`
+
+查看单个设备当前状态、可用操作和推荐下一步。
+
+### `get_device_capabilities`
+
+返回标准能力 schema 和 profile 驱动控制项，适合需要稳定路由的客户端。
+
+### `control_by_intent`
+
+自然语言式控制入口。适合大多数日常使用场景，例如“把卧室台灯亮度调到 30%”。
+
+### `control_device`
+
+统一结构化控制入口。适合客户端已经知道目标操作和参数时使用。
+
+## 使用示例
+
+### 查看服务状态
 
 ```json
 {
-  "mcpServers": {
-    "mijia": {
-      "command": "python",
-      "args": ["/path/to/miot-agent/mcp_server/mcp_server.py"],
-      "env": {
-        "MIJIA_USERNAME": "your_username",
-        "MIJIA_PASSWORD": "your_password"
-      }
-    }
+  "name": "get_service_status",
+  "arguments": {}
+}
+```
+
+### 主动准备登录
+
+```json
+{
+  "name": "prepare_login",
+  "arguments": {
+    "reopen_qr": true
   }
 }
 ```
 
-### Cline 集成
-
-对于 Cline（原 Claude Dev），添加 MCP 服务器配置：
+### 刷新设备与房间映射
 
 ```json
 {
-  "mcp": {
-    "servers": {
-      "mijia": {
-        "command": "python",
-        "args": ["/path/to/miot-agent/mcp_server/mcp_server.py"],
-        "env": {
-          "MIJIA_USERNAME": "your_username",
-          "MIJIA_PASSWORD": "your_password"
-        }
-      }
-    }
+  "name": "refresh_devices",
+  "arguments": {}
+}
+```
+
+### 查看家庭总览
+
+```json
+{
+  "name": "get_home_overview",
+  "arguments": {}
+}
+```
+
+### 查看单个设备状态
+
+```json
+{
+  "name": "get_device_status",
+  "arguments": {
+    "device_name": "吸顶灯",
+    "room": "客厅"
   }
 }
 ```
 
-### 通用 MCP 客户端集成
+### 查看能力 schema
 
-对于任何兼容 MCP 的客户端：
-
-1. **命令**: `python /path/to/miot-agent/mcp_server/mcp_server.py`
-2. **环境变量**:
-   - `MIJIA_USERNAME`: 米家账户用户名
-   - `MIJIA_PASSWORD`: 米家账户密码
-   - `MIJIA_ENABLE_QR`: 设置为 "true" 启用二维码登录（可选）
-   - `MIJIA_LOG_LEVEL`: 日志级别（DEBUG, INFO, WARNING, ERROR）
-
-### 验证集成
-
-集成完成后，您应该能在 AI 助手中看到以下工具：
-
-- **连接管理**: `connect`, `connect_with_qr`, `disconnect`, `ping`
-- **设备管理**: `discover_devices`, `search_devices`
-- **属性操作**: `get_property_value`, `set_property_value`, `batch_set_properties`
-- **动作操作**: `call_action`
-- **状态监控**: `get_device_status`, `refresh_all_device_status`
-- **家庭管理**: `get_homes`, `get_consumable_items`
-- **场景管理**: `get_scenes_list`, `run_scene`
-- **系统管理**: `get_server_status`, `clear_cache`
-
-以及这些资源：
-- `mijia://devices` - 设备列表
-- `mijia://config` - 配置信息
-- `mijia://device/{device_id}/properties` - 设备属性
-- `mijia://device/{device_id}/actions` - 设备动作
-
-## 工具使用指南
-
-### 连接管理
-
-#### 连接到米家云服务
 ```json
 {
-  "method": "tools/call",
-  "params": {
-    "name": "connect",
-    "arguments": {}
+  "name": "get_device_capabilities",
+  "arguments": {
+    "device_name": "台灯",
+    "room": "卧室"
   }
 }
 ```
 
-#### 断开连接
+### 自然语言控制
+
 ```json
 {
-  "method": "tools/call",
-  "params": {
-    "name": "disconnect",
-    "arguments": {}
+  "name": "control_by_intent",
+  "arguments": {
+    "query": "把卧室台灯亮度调到30%"
   }
 }
 ```
 
-### 设备发现和管理
+### 结构化控制
 
-#### 发现设备
 ```json
 {
-  "method": "tools/call",
-  "params": {
-    "name": "discover_devices",
-    "arguments": {}
+  "name": "control_device",
+  "arguments": {
+    "operation": "set_color_temperature",
+    "device_name": "台灯",
+    "room": "卧室",
+    "value": 4000
   }
 }
 ```
 
-#### 搜索设备
+### 执行场景
+
 ```json
 {
-  "method": "tools/call",
-  "params": {
-    "name": "search_devices",
-    "arguments": {
-      "name_filter": "台灯",
-      "model_filter": "xiaomi",
-      "online_only": true
-    }
+  "name": "execute_scene",
+  "arguments": {
+    "scene_name": "回家模式"
   }
 }
 ```
 
-### 设备属性操作
+## 当前边界
 
-#### 获取设备属性列表
-```json
-{
-  "method": "tools/call",
-  "params": {
-    "name": "get_device_properties",
-    "arguments": {
-      "device_id": "123456789"
-    }
-  }
-}
-```
+这版 MCP 重点覆盖的是最常见的家庭控制路径：
 
-#### 获取属性值
-```json
-{
-  "method": "tools/call",
-  "params": {
-    "name": "get_property_value",
-    "arguments": {
-      "device_id": "123456789",
-      "siid": 2,
-      "piid": 1
-    }
-  }
-}
-```
+- 家庭与房间浏览
+- 设备定位
+- 通用能力控制
+- 标准化能力 schema 暴露
+- 场景执行
+- 耗材查询
 
-#### 设置属性值
-```json
-{
-  "method": "tools/call",
-  "params": {
-    "name": "set_property_value",
-    "arguments": {
-      "device_id": "123456789",
-      "siid": 2,
-      "piid": 1,
-      "value": true
-    }
-  }
-}
-```
+已重点覆盖的典型能力包括：
 
-#### 批量设置属性
-```json
-{
-  "method": "tools/call",
-  "params": {
-    "name": "batch_set_properties",
-    "arguments": {
-      "operations": [
-        {
-          "device_id": "123456789",
-          "siid": 2,
-          "piid": 1,
-          "value": true
-        },
-        {
-          "device_id": "987654321",
-          "siid": 3,
-          "piid": 2,
-          "value": 50
-        }
-      ]
-    }
-  }
-}
-```
+- 开关
+- 亮度
+- 色温
+- 目标温度
+- 模式
+- 风速
+- 开合位置
 
-### 设备动作调用
+更底层、更强定制的能力仍然可以继续往 `control_device` 扩展，但不再作为默认使用方式对外暴露。
 
-#### 获取设备动作列表
-```json
-{
-  "method": "tools/call",
-  "params": {
-    "name": "get_device_actions",
-    "arguments": {
-      "device_id": "123456789"
-    }
-  }
-}
-```
+## 代码结构
 
-#### 调用设备动作
-```json
-{
-  "method": "tools/call",
-  "params": {
-    "name": "call_action",
-    "arguments": {
-      "device_id": "123456789",
-      "siid": 2,
-      "aiid": 1,
-      "params": []
-    }
-  }
-}
-```
+当前服务内部主要有三层：
 
-### 状态监控
+- `adapter/`
+  负责与 `mijiaAPI` 交互、登录、设备发现和二维码登录体验
+- `mcp_server/core/`
+  负责结果封装、能力计算、意图路由、标准化
+- `mcp_server/device_definitions/` 与 `mcp_server/device_resources/`
+  负责标准能力定义、意图定义和产品化资源模型
 
-#### 获取设备状态
-```json
-{
-  "method": "tools/call",
-  "params": {
-    "name": "get_device_status",
-    "arguments": {
-      "device_id": "123456789"
-    }
-  }
-}
-```
-
-#### 刷新所有设备状态
-```json
-{
-  "method": "tools/call",
-  "params": {
-    "name": "refresh_all_device_status",
-    "arguments": {}
-  }
-}
-```
-
-#### 获取缓存状态
-```json
-{
-  "method": "tools/call",
-  "params": {
-    "name": "get_cached_device_status",
-    "arguments": {
-      "device_id": "123456789"
-    }
-  }
-}
-```
-
-### 系统管理
-
-#### 获取服务器状态
-```json
-{
-  "method": "tools/call",
-  "params": {
-    "name": "get_server_status",
-    "arguments": {}
-  }
-}
-```
-
-#### 清除缓存
-```json
-{
-  "method": "tools/call",
-  "params": {
-    "name": "clear_cache",
-    "arguments": {}
-  }
-}
-```
-
-#### 测试连通性
-```json
-{
-  "method": "tools/call",
-  "params": {
-    "name": "ping",
-    "arguments": {
-      "message": "hello"
-    }
-  }
-}
-```
-
-### 家庭和场景管理
-
-#### 获取家庭列表
-```json
-{
-  "method": "tools/call",
-  "params": {
-    "name": "get_homes",
-    "arguments": {}
-  }
-}
-```
-
-#### 获取场景列表
-```json
-{
-  "method": "tools/call",
-  "params": {
-    "name": "get_scenes_list",
-    "arguments": {
-      "home_id": "123456789"
-    }
-  }
-}
-```
-
-#### 执行场景
-```json
-{
-  "method": "tools/call",
-  "params": {
-    "name": "run_scene",
-    "arguments": {
-      "scene_id": "987654321"
-    }
-  }
-}
-```
-
-#### 获取耗材信息
-```json
-{
-  "method": "tools/call",
-  "params": {
-    "name": "get_consumable_items",
-    "arguments": {
-      "home_id": "123456789",
-      "owner_id": 12345
-    }
-  }
-}
-```
-
-## 资源访问
-
-### 获取设备列表
-```json
-{
-  "method": "resources/read",
-  "params": {
-    "uri": "mijia://devices"
-  }
-}
-```
-
-### 获取配置信息
-```json
-{
-  "method": "resources/read",
-  "params": {
-    "uri": "mijia://config"
-  }
-}
-```
-
-### 获取设备属性
-```json
-{
-  "method": "resources/read",
-  "params": {
-    "uri": "mijia://device/123456789/properties"
-  }
-}
-```
-
-### 获取设备动作
-```json
-{
-  "method": "resources/read",
-  "params": {
-    "uri": "mijia://device/123456789/actions"
-  }
-}
-```
-
-## 错误处理
-
-所有工具调用都会返回统一的错误格式：
-
-```json
-{
-  "success": false,
-  "error": "错误描述",
-  "error_code": "ERROR_CODE",
-  "timestamp": "2024-01-01T12:00:00Z"
-}
-```
-
-常见错误代码：
-- `ADAPTER_NOT_INITIALIZED`: 适配器未初始化
-- `DEVICE_NOT_FOUND`: 设备未找到
-- `PROPERTY_NOT_FOUND`: 属性未找到
-- `ACTION_NOT_FOUND`: 动作未找到
-- `CONNECTION_FAILED`: 连接失败
-- `AUTHENTICATION_FAILED`: 认证失败
-
-## 日志配置
-
-日志级别可以通过环境变量设置：
-
-```bash
-# 环境变量
-export MIJIA_LOG_LEVEL="DEBUG"
-```
-
-## 项目结构
-
-```
-miot-agent/
-├── adapter/
-│   ├── mijia_adapter.py      # 米家适配器实现
-│   └── mijia_config.py       # 配置管理
-├── mcp_server/
-│   ├── mcp_server.py         # MCP服务器主程序
-│   └── server_config.json    # 服务器配置
-├── requirements.txt          # 项目依赖
-├── mcp_test.py              # 测试脚本
-└── README.md                # 项目文档
-```
-
-## 开发指南
-
-### 添加新工具
-
-1. 在 `mcp_server.py` 中添加工具函数：
-
-```python
-@mcp.tool()
-async def your_new_tool(param1: str, param2: int = 0) -> str:
-    """工具描述
-    
-    Args:
-        param1: 参数1描述
-        param2: 参数2描述
-    
-    Returns:
-        返回值描述
-    """
-    # 实现逻辑
-    pass
-```
-
-2. 在 `server_config.json` 中添加工具配置：
-
-```json
-{
-  "name": "your_new_tool",
-  "description": "工具描述",
-  "category": "category_name"
-}
-```
-
-### 添加新资源
-
-1. 在 `mcp_server.py` 中添加资源处理函数：
-
-```python
-@mcp.resource("mijia://your-resource")
-async def get_your_resource() -> str:
-    """资源描述"""
-    # 实现逻辑
-    pass
-```
-
-2. 在 `server_config.json` 中添加资源配置：
-
-```json
-{
-  "uri": "mijia://your-resource",
-  "name": "资源名称",
-  "description": "资源描述",
-  "mimeType": "application/json"
-}
-```
-
-## 致谢
-
-感谢以下开源项目的支持：
-
-- [mijia-api](https://github.com/Do1e/mijia-api) - 提供了米家设备控制的核心API实现
-
-## 🚀 自动化发布
-
-本项目配置了 GitHub Actions 自动化工作流：
-
-### 📦 PyPI 自动发布
-
-当创建新的 GitHub Release 时，会自动：
-1. 构建 Python 包
-2. 检查包质量
-3. 发布到 PyPI
-
-**配置步骤：**
-1. 在 PyPI 创建 API Token
-2. 在 GitHub 仓库设置中添加 `PYPI_API_TOKEN` Secret
-3. 创建 Release 即可自动发布
-
-详细说明请参考 [GitHub Actions 配置指南](.github/README.md)
-
-### 🧪 持续集成测试
-
-每次推送代码时自动：
-- 在多个 Python 版本上测试
-- 代码质量检查
-- 包构建验证
-
-## TODO
-
-### 已完成功能 ✅
-- [x] 连接米家云服务
-- [x] 发现设备功能
-- [x] 获取设备信息
-- [x] 设备状态查询
-- [x] 服务器状态监控
-
-### 待开发功能 🚧
-- [ ] 设备控制功能开发
-  - 目前设备控制功能还未就绪
-  - 需要完善设备属性设置和动作执行功能
-  - 计划在后续版本中实现完整的设备控制能力
-
-## 许可证
-
-MIT License
-
-## 贡献
-
-欢迎提交 Issue 和 Pull Request！
+当前能力和路由不依赖插件自动发现，而是显式导入定义表。这样更清晰，也更适合 AI 客户端稳定调用。
