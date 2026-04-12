@@ -8,7 +8,7 @@ with open("requirements.txt", "r", encoding="utf-8") as fh:
 
 setup(
     name="miot-mcp",
-    version="1.0.3",
+    version="2.0.0",
     author="Javen Yan",
     author_email="2023335616@qq.com",
     description="Mijia smart device MCP server, providing device discovery, property read/write, action invoke and other functions",
@@ -22,15 +22,13 @@ setup(
         "License :: OSI Approved :: MIT License",
         "Operating System :: OS Independent",
         "Programming Language :: Python :: 3",
-        "Programming Language :: Python :: 3.8",
-        "Programming Language :: Python :: 3.9",
         "Programming Language :: Python :: 3.10",
         "Programming Language :: Python :: 3.11",
         "Programming Language :: Python :: 3.12",
         "Topic :: Home Automation",
         "Topic :: Software Development :: Libraries :: Python Modules",
     ],
-    python_requires=">=3.8",
+    python_requires=">=3.10,<4.0",
     install_requires=requirements,
     extras_require={
         "dev": [

@@ -50,11 +50,11 @@ async def test_fastmcp_server():
             "id": 1,
             "method": "initialize",
             "params": {
-                "protocolVersion": "2024-11-05",
+                "protocolVersion": "2025-06-18",
                 "capabilities": {},
                 "clientInfo": {
                     "name": "test-client",
-                    "version": "1.0.3"
+                    "version": "1.1.0"
                 }
             }
         }
@@ -162,7 +162,12 @@ async def test_fastmcp_server():
                     if response_data:
                         response = json.loads(response_data.decode().strip())
                         if "result" in response:
-                            print(f"✓ Ping tool call successful: {response['result']}")
+                            result = response["result"]
+                            print(f"✓ Ping tool call successful: isError={result.get('isError', False)}")
+                            if "structuredContent" in result:
+                                print(f"  structuredContent: {result['structuredContent']}")
+                            else:
+                                print(f"  content: {result.get('content')}")
                         else:
                             print(f"⚠ Ping tool call response error: {response}")
                     else:

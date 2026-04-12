@@ -155,8 +155,8 @@ class AuthDataManager:
         if not auth_data:
             return False
         
-        # 检查必要字段
-        required_fields = ['userId', 'serviceToken', 'ssecurity']
+        # mijiaAPI 3.x 至少需要这些字段才能判断为可用认证
+        required_fields = ['ua', 'userId', 'cUserId', 'serviceToken', 'ssecurity']
         for field in required_fields:
             if field not in auth_data:
                 _LOGGER.warning(f"认证数据缺少必要字段: {field}")

@@ -2,10 +2,11 @@
 mcp>=1.13.0
 
 # MijiaAPI dependencies
-mijiaAPI>=2.0.1
+mijiaAPI>=3.0.5
 
 # Image processing
 Pillow>=10.0.0
+qrcode[pil]>=8.2
 
 # Dev
 setuptools>=80.9.0
