@@ -1,6 +1,6 @@
 """Pydantic output models for MCP tool schemas."""
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -54,7 +54,7 @@ class DeviceStatusResult(MCPResultModel):
     device: Optional[Dict[str, Any]] = Field(default=None, description="Resolved device summary.")
     device_resource: Optional[Dict[str, Any]] = Field(default=None, description="Resource-style device description for clients.")
     state: Optional[Dict[str, Any]] = Field(default=None, description="Current observed device state.")
-    state_summary: Optional[str] = Field(default=None, description="Short natural-language state summary.")
+    state_summary: Optional[Union[str, Dict[str, Any]]] = Field(default=None, description="Short natural-language state summary.")
     supported_operations: Optional[List[Dict[str, Any]]] = Field(default=None, description="Supported operations for this device.")
     assistant_summary: Optional[str] = Field(default=None, description="User-facing summary for AI agents.")
     quick_actions: Optional[List[str]] = Field(default=None, description="Suggested quick operations.")
@@ -74,7 +74,7 @@ class DeviceCapabilitiesResult(MCPResultModel):
     device_resource: Optional[Dict[str, Any]] = Field(default=None, description="Resource-style device description.")
     supported_operations: Optional[List[Dict[str, Any]]] = Field(default=None, description="Enabled operations for this device.")
     state: Optional[Dict[str, Any]] = Field(default=None, description="Raw device state in verbose mode.")
-    state_summary: Optional[str] = Field(default=None, description="Short natural-language state summary.")
+    state_summary: Optional[Union[str, Dict[str, Any]]] = Field(default=None, description="Short natural-language state summary.")
     mapping_summary: Optional[Dict[str, Any]] = Field(default=None, description="Coverage summary for mapped capabilities.")
     response_mode: Optional[str] = Field(default=None, description="Summary/full response mode hint.")
 
