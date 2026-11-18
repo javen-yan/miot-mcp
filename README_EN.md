@@ -2,14 +2,15 @@
 
 [中文文档](README.md) | English
 
-A productized Mijia MCP server built on top of `mijiaAPI 3.x`. Clients do not need to understand `did`, `siid/piid/aiid`, or other low-level protocol details up front. The server is designed around homes, rooms, device names, and scene names first.
+A productized Mijia MCP server built on top of `mijiaAPI 5.x` and Xiaomi's official `miot-spec.org` specification source. Clients do not need to understand `did`, `siid/piid/aiid`, or other low-level protocol details up front. The server is designed around homes, rooms, device names, and scene names first.
 
 ## What This Version Solves
 
 - For AI clients: exposes stable product-level tools instead of raw protocol fields
-- For real smart-home workflows: browse homes and rooms first, then resolve devices, then control them
-- For MCP compatibility: tools return structured results, and service/login state is directly consumable
-- For future growth: standard capability schemas, profile-driven controls, and resource models can keep evolving
+- For real smart-home workflows: browse homes and rooms first, then resolve devices (including shared devices and split multi-gang switch sub-channels `.s2/.s3`), then control them
+- Official MIoT-Spec & type coercion: powered by `mijiaAPI 5.0` (`miot-spec.org`), automatically handling multi-service deduplicated properties (`on-2`/`mode-2`), bilingual enum resolution, and range step alignment
+- Fast batch I/O & non-blocking auth: batch property reads in a single cloud request, silent token auto-refresh, and background non-blocking QR login
+- Full device coverage: standard capability tools plus profile-driven `set_property` / `run_action` fallback for any MIoT device
 
 ## Current Capabilities
 
@@ -83,9 +84,9 @@ poetry run python mcp_server/mcp_test.py
 
 ## Authentication
 
-`mijiaAPI 3.x` removed username/password login. QR login is the only supported path.
+`mijiaAPI 5.x` uses QR code login and supports silent token auto-refresh when `passToken` is valid.
 
-When login is needed, the server will:
+When a fresh login is needed, the server will (in a non-blocking background thread):
 
 - generate a browser-friendly page at `~/.miot-mcp/qr.html`
 - also generate a QR image at `~/.miot-mcp/qr.png`
