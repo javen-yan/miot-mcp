@@ -4,6 +4,8 @@
 
 一个基于 `mijiaAPI 3.x` 的产品化米家 MCP 服务。它不再要求客户端先理解 `did`、`siid/piid/aiid` 这些协议细节，而是优先面向“家庭、房间、设备名、场景名”提供更自然的查询和控制能力。
 
+[![Miot MCP server](https://mcprush.com/badge/miot-mcp/card.svg)](https://mcprush.com/to/miot-mcp?ref=badge)
+
 ## 这版解决什么问题
 
 - 面向 AI 客户端：优先暴露稳定、清晰的产品级工具，而不是底层协议字段
