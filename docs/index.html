@@ -1,0 +1,201 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>米家 MCP Server (miot-mcp)</title>
+  <meta name="description" content="基于 mijiaAPI 5.x 与小米官方 miot-spec.org 物模型源的产品化米家 MCP 服务" />
+  <script
+    defer
+    src="https://vibecafe.ai/telemetry/v1.js"
+    data-vc-product-id="cmwlz629u000r07jyv9whd519"
+    data-vc-auth-key="vc_web_jOovhiYm_RzS0cC9xEsY-vi4OTyV75caUWhUqRTKi_E"
+  ></script>
+  <style>
+    :root {
+      color-scheme: light dark;
+      --bg: #f8fafc;
+      --card: #ffffff;
+      --text: #0f172a;
+      --muted: #475569;
+      --accent: #ff6900;
+      --border: #e2e8f0;
+      --code-bg: #f1f5f9;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #0f172a;
+        --card: #1e293b;
+        --text: #f8fafc;
+        --muted: #94a3b8;
+        --border: #334155;
+        --code-bg: #0b1120;
+      }
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Microsoft YaHei", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.65;
+    }
+    .container {
+      max-width: 880px;
+      margin: 0 auto;
+      padding: 48px 24px 72px;
+    }
+    header {
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 28px;
+      margin-bottom: 32px;
+    }
+    .badge {
+      display: inline-block;
+      font-size: 0.8rem;
+      font-weight: 600;
+      color: var(--accent);
+      background: rgba(255, 105, 0, 0.12);
+      padding: 4px 12px;
+      border-radius: 999px;
+      margin-bottom: 12px;
+    }
+    h1 {
+      margin: 0 0 12px;
+      font-size: 2.25rem;
+      letter-spacing: -0.02em;
+    }
+    .subtitle {
+      margin: 0 0 20px;
+      color: var(--muted);
+      font-size: 1.05rem;
+    }
+    .actions {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      padding: 10px 18px;
+      border-radius: 10px;
+      text-decoration: none;
+      font-weight: 600;
+      font-size: 0.95rem;
+      border: 1px solid var(--border);
+      color: var(--text);
+      background: var(--card);
+    }
+    .btn.primary {
+      background: var(--accent);
+      color: #fff;
+      border-color: var(--accent);
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+      gap: 16px;
+      margin-bottom: 32px;
+    }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 20px;
+    }
+    .card h3 {
+      margin: 0 0 8px;
+      font-size: 1.05rem;
+    }
+    .card p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 0.92rem;
+    }
+    h2 {
+      font-size: 1.35rem;
+      margin: 32px 0 14px;
+    }
+    pre {
+      background: var(--code-bg);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 16px;
+      overflow-x: auto;
+      font-size: 0.88rem;
+    }
+    footer {
+      margin-top: 48px;
+      padding-top: 20px;
+      border-top: 1px solid var(--border);
+      color: var(--muted);
+      font-size: 0.88rem;
+    }
+    footer a {
+      color: var(--accent);
+      text-decoration: none;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <span class="badge">MCP Server · Mijia / MIoT</span>
+      <h1>米家 MCP Server (miot-mcp)</h1>
+      <p class="subtitle">
+        基于 <code>mijiaAPI 5.x</code> 与小米官方 <code>miot-spec.org</code> 物模型源的产品化米家 MCP 服务。面向“家庭、房间、设备名、场景名”提供稳定、快速的智能家居查询与控制能力。
+      </p>
+      <div class="actions">
+        <a class="btn primary" href="https://github.com/javen-yan/miot-mcp">GitHub 仓库</a>
+        <a class="btn" href="https://github.com/javen-yan/miot-mcp#readme">中文文档</a>
+        <a class="btn" href="https://github.com/javen-yan/miot-mcp/blob/master/README_EN.md">English Docs</a>
+      </div>
+    </header>
+
+    <section class="grid">
+      <div class="card">
+        <h3>面向 AI 客户端</h3>
+        <p>优先暴露清晰稳定的产品级工具，无需客户端预知底层 did / siid / piid 协议字段。</p>
+      </div>
+      <div class="card">
+        <h3>真实家庭场景</h3>
+        <p>支持按家庭与房间浏览、共享设备、多键开关分路子设备定位及自然语言意图控制。</p>
+      </div>
+      <div class="card">
+        <h3>官方物模型对齐</h3>
+        <p>对接 miot-spec.org，自动处理多服务属性去重、中英文枚举映射与数值步长对齐。</p>
+      </div>
+      <div class="card">
+        <h3>高速批量读写</h3>
+        <p>单次请求批量读取设备状态，支持 passToken 静默续期与后台非阻塞扫码登录。</p>
+      </div>
+    </section>
+
+    <section>
+      <h2>快速开始</h2>
+      <pre><code>pip install -r requirements.txt
+python mcp_server/mcp_server.py</code></pre>
+
+      <h2>MCP 客户端配置</h2>
+      <pre><code>{
+  "mcpServers": {
+    "mijia": {
+      "command": "/path/to/venv/bin/python",
+      "args": ["/path/to/miot-mcp/mcp_server/mcp_server.py"],
+      "env": {
+        "MIJIA_ENABLE_QR": "true",
+        "MIJIA_QR_OPEN_MODE": "browser",
+        "MIJIA_LOG_LEVEL": "INFO"
+      }
+    }
+  }
+}</code></pre>
+    </section>
+
+    <footer>
+      MIT License · <a href="https://github.com/javen-yan/miot-mcp">javen-yan/miot-mcp</a>
+    </footer>
+  </div>
+</body>
+</html>
