@@ -3,8 +3,8 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>米家 MCP Server (miot-mcp)</title>
-  <meta name="description" content="基于 mijiaAPI 5.x 与小米官方 miot-spec.org 物模型源的产品化米家 MCP 服务" />
+  <title>miot-mcp · 米家智能家居 MCP Server</title>
+  <meta name="description" content="基于 mijiaAPI 5.x 与小米官方 miot-spec.org 物模型源的产品化米家 MCP 服务，面向 AI 客户端提供家庭、房间、设备、场景的高速查询与控制能力。" />
   <script
     defer
     src="https://vibecafe.ai/telemetry/v1.js"
@@ -13,176 +13,883 @@
   ></script>
   <style>
     :root {
-      color-scheme: light dark;
-      --bg: #f8fafc;
-      --card: #ffffff;
-      --text: #0f172a;
-      --muted: #475569;
-      --accent: #ff6900;
-      --border: #e2e8f0;
-      --code-bg: #f1f5f9;
+      color-scheme: dark;
+      --bg: #090b10;
+      --bg-elevated: #11151f;
+      --bg-card: rgba(20, 25, 37, 0.78);
+      --bg-card-hover: rgba(28, 35, 52, 0.92);
+      --bg-code: #06080c;
+      --text: #f3f6fc;
+      --text-secondary: #9ba6bc;
+      --text-muted: #647087;
+      --brand: #ff6900;
+      --brand-light: #ff8a33;
+      --brand-glow: rgba(255, 105, 0, 0.18);
+      --accent-teal: #14b8a6;
+      --border: rgba(255, 255, 255, 0.08);
+      --border-strong: rgba(255, 105, 0, 0.38);
+      --radius-lg: 20px;
+      --radius-md: 14px;
+      --radius-sm: 10px;
+      --shadow: 0 24px 64px rgba(0, 0, 0, 0.45);
     }
-    @media (prefers-color-scheme: dark) {
-      :root {
-        --bg: #0f172a;
-        --card: #1e293b;
-        --text: #f8fafc;
-        --muted: #94a3b8;
-        --border: #334155;
-        --code-bg: #0b1120;
-      }
+
+    * {
+      box-sizing: border-box;
     }
-    * { box-sizing: border-box; }
+
+    html {
+      scroll-behavior: smooth;
+    }
+
     body {
       margin: 0;
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Microsoft YaHei", sans-serif;
-      background: var(--bg);
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+      background-color: var(--bg);
+      background-image:
+        radial-gradient(circle at 15% 0%, rgba(255, 105, 0, 0.14) 0%, transparent 42%),
+        radial-gradient(circle at 85% 12%, rgba(20, 184, 166, 0.10) 0%, transparent 38%),
+        linear-gradient(180deg, rgba(255, 255, 255, 0.015) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255, 255, 255, 0.015) 1px, transparent 1px);
+      background-size: 100% 100%, 100% 100%, 40px 40px, 40px 40px;
       color: var(--text);
       line-height: 1.65;
+      -webkit-font-smoothing: antialiased;
     }
-    .container {
-      max-width: 880px;
-      margin: 0 auto;
-      padding: 48px 24px 72px;
+
+    a {
+      color: inherit;
+      text-decoration: none;
     }
-    header {
+
+    code, pre {
+      font-family: "JetBrains Mono", "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+    }
+
+    /* Navbar */
+    .navbar {
+      position: sticky;
+      top: 0;
+      z-index: 50;
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      background: rgba(9, 11, 16, 0.78);
       border-bottom: 1px solid var(--border);
-      padding-bottom: 28px;
-      margin-bottom: 32px;
     }
-    .badge {
-      display: inline-block;
-      font-size: 0.8rem;
-      font-weight: 600;
-      color: var(--accent);
-      background: rgba(255, 105, 0, 0.12);
-      padding: 4px 12px;
-      border-radius: 999px;
-      margin-bottom: 12px;
-    }
-    h1 {
-      margin: 0 0 12px;
-      font-size: 2.25rem;
-      letter-spacing: -0.02em;
-    }
-    .subtitle {
-      margin: 0 0 20px;
-      color: var(--muted);
-      font-size: 1.05rem;
-    }
-    .actions {
+
+    .nav-inner {
+      max-width: 1160px;
+      margin: 0 auto;
+      padding: 14px 24px;
       display: flex;
-      gap: 12px;
-      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
     }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-weight: 700;
+      font-size: 1.08rem;
+      letter-spacing: -0.01em;
+    }
+
+    .brand-logo {
+      width: 34px;
+      height: 34px;
+      border-radius: 10px;
+      background: linear-gradient(135deg, #ff6900 0%, #ff8f3d 100%);
+      display: grid;
+      place-items: center;
+      color: #fff;
+      font-weight: 800;
+      font-size: 0.95rem;
+      box-shadow: 0 8px 20px rgba(255, 105, 0, 0.35);
+    }
+
+    .brand-tag {
+      font-size: 0.74rem;
+      font-weight: 600;
+      padding: 2px 8px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.07);
+      color: var(--text-secondary);
+      border: 1px solid var(--border);
+    }
+
+    .nav-links {
+      display: flex;
+      align-items: center;
+      gap: 22px;
+      font-size: 0.92rem;
+      color: var(--text-secondary);
+    }
+
+    .nav-links a:hover {
+      color: var(--text);
+    }
+
+    .lang-btn {
+      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 6px 12px;
+      border-radius: 8px;
+      font-size: 0.82rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    .lang-btn:hover {
+      border-color: var(--brand);
+      background: rgba(255, 105, 0, 0.12);
+    }
+
+    /* Container */
+    .container {
+      max-width: 1160px;
+      margin: 0 auto;
+      padding: 0 24px;
+    }
+
+    /* Hero */
+    .hero {
+      padding: 76px 0 56px;
+      display: grid;
+      grid-template-columns: 1.08fr 0.92fr;
+      gap: 44px;
+      align-items: center;
+    }
+
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 14px;
+      border-radius: 999px;
+      background: rgba(255, 105, 0, 0.12);
+      border: 1px solid rgba(255, 105, 0, 0.32);
+      color: var(--brand-light);
+      font-size: 0.82rem;
+      font-weight: 600;
+      margin-bottom: 20px;
+    }
+
+    .pill-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--brand);
+      box-shadow: 0 0 10px var(--brand);
+    }
+
+    .hero h1 {
+      margin: 0 0 18px;
+      font-size: clamp(2.2rem, 4vw, 3.35rem);
+      line-height: 1.14;
+      letter-spacing: -0.03em;
+    }
+
+    .hero h1 .highlight {
+      background: linear-gradient(95deg, #ff6900 0%, #ffb067 55%, #2dd4bf 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .hero-desc {
+      margin: 0 0 28px;
+      font-size: 1.08rem;
+      color: var(--text-secondary);
+      max-width: 580px;
+    }
+
+    .hero-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      margin-bottom: 30px;
+    }
+
     .btn {
       display: inline-flex;
       align-items: center;
-      padding: 10px 18px;
-      border-radius: 10px;
-      text-decoration: none;
+      gap: 8px;
+      padding: 12px 22px;
+      border-radius: 12px;
       font-weight: 600;
       font-size: 0.95rem;
       border: 1px solid var(--border);
+      background: var(--bg-elevated);
       color: var(--text);
-      background: var(--card);
+      transition: all 0.2s ease;
+      cursor: pointer;
     }
-    .btn.primary {
-      background: var(--accent);
+
+    .btn:hover {
+      transform: translateY(-1px);
+      border-color: rgba(255, 255, 255, 0.22);
+      background: rgba(255, 255, 255, 0.08);
+    }
+
+    .btn-primary {
+      background: linear-gradient(135deg, #ff6900 0%, #ff8524 100%);
+      border-color: transparent;
       color: #fff;
-      border-color: var(--accent);
+      box-shadow: 0 12px 28px rgba(255, 105, 0, 0.32);
     }
-    .grid {
+
+    .btn-primary:hover {
+      background: linear-gradient(135deg, #ff7614 0%, #ff933b 100%);
+      box-shadow: 0 14px 32px rgba(255, 105, 0, 0.44);
+    }
+
+    .hero-metrics {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-      gap: 16px;
-      margin-bottom: 32px;
-    }
-    .card {
-      background: var(--card);
-      border: 1px solid var(--border);
-      border-radius: 14px;
-      padding: 20px;
-    }
-    .card h3 {
-      margin: 0 0 8px;
-      font-size: 1.05rem;
-    }
-    .card p {
-      margin: 0;
-      color: var(--muted);
-      font-size: 0.92rem;
-    }
-    h2 {
-      font-size: 1.35rem;
-      margin: 32px 0 14px;
-    }
-    pre {
-      background: var(--code-bg);
-      border: 1px solid var(--border);
-      border-radius: 12px;
-      padding: 16px;
-      overflow-x: auto;
-      font-size: 0.88rem;
-    }
-    footer {
-      margin-top: 48px;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 14px;
       padding-top: 20px;
       border-top: 1px solid var(--border);
-      color: var(--muted);
+    }
+
+    .metric-val {
+      font-size: 1.35rem;
+      font-weight: 800;
+      color: var(--text);
+      letter-spacing: -0.02em;
+    }
+
+    .metric-label {
+      font-size: 0.82rem;
+      color: var(--text-muted);
+    }
+
+    /* Interactive Console Card */
+    .console-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      box-shadow: var(--shadow);
+      overflow: hidden;
+      backdrop-filter: blur(18px);
+    }
+
+    .console-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 16px;
+      background: rgba(255, 255, 255, 0.03);
+      border-bottom: 1px solid var(--border);
+    }
+
+    .window-dots {
+      display: flex;
+      gap: 7px;
+    }
+
+    .window-dots span {
+      width: 11px;
+      height: 11px;
+      border-radius: 50%;
+    }
+
+    .dot-red { background: #ef4444; }
+    .dot-amber { background: #f59e0b; }
+    .dot-green { background: #10b981; }
+
+    .console-tabs {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+
+    .console-tab {
+      background: transparent;
+      border: 1px solid transparent;
+      color: var(--text-secondary);
+      font-size: 0.78rem;
+      font-weight: 600;
+      padding: 5px 10px;
+      border-radius: 7px;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+
+    .console-tab.active {
+      background: rgba(255, 105, 0, 0.15);
+      border-color: rgba(255, 105, 0, 0.4);
+      color: var(--brand-light);
+    }
+
+    .console-body {
+      padding: 18px 20px;
+      background: var(--bg-code);
+      font-size: 0.83rem;
+      line-height: 1.6;
+      overflow-x: auto;
+      min-height: 325px;
+    }
+
+    .console-body pre {
+      margin: 0;
+      color: #dbe4f3;
+    }
+
+    .tok-key { color: #7dd3fc; }
+    .tok-str { color: #fca5a5; }
+    .tok-num { color: #fcd34d; }
+    .tok-bool { color: #6ee7b7; }
+    .tok-comment { color: #64748b; font-style: italic; }
+
+    /* Section Header */
+    section {
+      padding: 56px 0;
+    }
+
+    .section-head {
+      margin-bottom: 34px;
+    }
+
+    .section-eyebrow {
+      color: var(--brand-light);
+      font-size: 0.8rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      margin-bottom: 8px;
+    }
+
+    .section-title {
+      margin: 0 0 10px;
+      font-size: clamp(1.6rem, 2.6vw, 2.15rem);
+      letter-spacing: -0.02em;
+    }
+
+    .section-sub {
+      margin: 0;
+      color: var(--text-secondary);
+      max-width: 680px;
+    }
+
+    /* Feature Grid */
+    .features-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(310px, 1fr));
+      gap: 20px;
+    }
+
+    .feature-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      padding: 24px;
+      transition: all 0.22s ease;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .feature-card:hover {
+      background: var(--bg-card-hover);
+      border-color: var(--border-strong);
+      transform: translateY(-2px);
+    }
+
+    .feature-icon {
+      width: 42px;
+      height: 42px;
+      border-radius: 11px;
+      background: rgba(255, 105, 0, 0.12);
+      border: 1px solid rgba(255, 105, 0, 0.25);
+      display: grid;
+      place-items: center;
+      font-size: 1.2rem;
+      margin-bottom: 16px;
+    }
+
+    .feature-card h3 {
+      margin: 0 0 8px;
+      font-size: 1.08rem;
+    }
+
+    .feature-card p {
+      margin: 0;
+      color: var(--text-secondary);
+      font-size: 0.92rem;
+    }
+
+    /* Workflow Steps */
+    .workflow-rail {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 16px;
+    }
+
+    .step-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      padding: 20px;
+    }
+
+    .step-num {
+      display: inline-block;
+      font-family: "JetBrains Mono", monospace;
+      font-size: 0.76rem;
+      font-weight: 700;
+      color: var(--brand-light);
+      background: rgba(255, 105, 0, 0.12);
+      padding: 3px 9px;
+      border-radius: 6px;
+      margin-bottom: 12px;
+    }
+
+    .step-card h4 {
+      margin: 0 0 6px;
+      font-size: 1rem;
+    }
+
+    .step-card p {
+      margin: 0;
+      font-size: 0.87rem;
+      color: var(--text-secondary);
+    }
+
+    /* Tool Catalog */
+    .catalog-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 18px;
+    }
+
+    .catalog-box {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      padding: 20px;
+    }
+
+    .catalog-box h3 {
+      margin: 0 0 14px;
+      font-size: 0.98rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .catalog-count {
+      font-size: 0.74rem;
+      color: var(--text-muted);
+      font-weight: 600;
+      padding: 2px 8px;
+      border-radius: 99px;
+      background: rgba(255, 255, 255, 0.05);
+    }
+
+    .chip-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .chip {
+      font-family: "JetBrains Mono", monospace;
+      font-size: 0.78rem;
+      padding: 5px 10px;
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid var(--border);
+      color: #cbd5e1;
+      transition: all 0.15s ease;
+    }
+
+    .chip:hover {
+      border-color: var(--brand);
+      color: #fff;
+      background: rgba(255, 105, 0, 0.12);
+    }
+
+    /* Quickstart Split */
+    .quickstart-grid {
+      display: grid;
+      grid-template-columns: 0.95fr 1.05fr;
+      gap: 24px;
+    }
+
+    .code-panel {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      overflow: hidden;
+    }
+
+    .code-panel-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--border);
+      background: rgba(255, 255, 255, 0.02);
+      font-size: 0.84rem;
+      font-weight: 600;
+      color: var(--text-secondary);
+    }
+
+    .copy-btn {
+      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 4px 10px;
+      border-radius: 6px;
+      font-size: 0.76rem;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+
+    .copy-btn:hover {
+      border-color: var(--brand);
+      color: var(--brand-light);
+    }
+
+    .code-panel pre {
+      margin: 0;
+      padding: 18px;
+      background: var(--bg-code);
+      overflow-x: auto;
+      font-size: 0.83rem;
+      line-height: 1.62;
+      color: #e2e8f0;
+    }
+
+    /* Footer */
+    footer {
+      margin-top: 40px;
+      border-top: 1px solid var(--border);
+      padding: 36px 0 56px;
+      color: var(--text-muted);
       font-size: 0.88rem;
     }
-    footer a {
-      color: var(--accent);
-      text-decoration: none;
+
+    .footer-inner {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 16px;
+    }
+
+    .footer-links {
+      display: flex;
+      gap: 20px;
+    }
+
+    .footer-links a:hover {
+      color: var(--brand-light);
+    }
+
+    @media (max-width: 920px) {
+      .hero,
+      .quickstart-grid {
+        grid-template-columns: 1fr;
+      }
+      .workflow-rail {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+    }
+
+    @media (max-width: 600px) {
+      .nav-links {
+        display: none;
+      }
+      .workflow-rail {
+        grid-template-columns: 1fr;
+      }
     }
   </style>
 </head>
 <body>
-  <div class="container">
-    <header>
-      <span class="badge">MCP Server · Mijia / MIoT</span>
-      <h1>米家 MCP Server (miot-mcp)</h1>
-      <p class="subtitle">
-        基于 <code>mijiaAPI 5.x</code> 与小米官方 <code>miot-spec.org</code> 物模型源的产品化米家 MCP 服务。面向“家庭、房间、设备名、场景名”提供稳定、快速的智能家居查询与控制能力。
-      </p>
-      <div class="actions">
-        <a class="btn primary" href="https://github.com/javen-yan/miot-mcp">GitHub 仓库</a>
-        <a class="btn" href="https://github.com/javen-yan/miot-mcp#readme">中文文档</a>
-        <a class="btn" href="https://github.com/javen-yan/miot-mcp/blob/master/README_EN.md">English Docs</a>
+  <nav class="navbar">
+    <div class="nav-inner">
+      <a href="#" class="brand">
+        <span class="brand-logo">M</span>
+        <span>miot-mcp</span>
+        <span class="brand-tag">v2.1 · mijiaAPI 5.x</span>
+      </a>
+      <div class="nav-links">
+        <a href="#features" data-i18n="nav_features">核心特性</a>
+        <a href="#workflow" data-i18n="nav_workflow">调用路径</a>
+        <a href="#tools" data-i18n="nav_tools">工具矩阵</a>
+        <a href="#quickstart" data-i18n="nav_quickstart">快速接入</a>
+        <a href="https://github.com/javen-yan/miot-mcp" target="_blank" rel="noopener">GitHub ↗</a>
       </div>
-    </header>
+      <button class="lang-btn" id="langToggle" type="button">EN / 中文</button>
+    </div>
+  </nav>
 
-    <section class="grid">
-      <div class="card">
-        <h3>面向 AI 客户端</h3>
-        <p>优先暴露清晰稳定的产品级工具，无需客户端预知底层 did / siid / piid 协议字段。</p>
+  <main class="container">
+    <!-- Hero -->
+    <section class="hero">
+      <div>
+        <div class="pill">
+          <span class="pill-dot"></span>
+          <span data-i18n="hero_badge">官方 miot-spec.org 物模型驱动 · 面向 AI 智能体</span>
+        </div>
+        <h1>
+          <span data-i18n="hero_title_1">用自然语言与标准工具掌控</span><br />
+          <span class="highlight" data-i18n="hero_title_2">全屋米家智能设备</span>
+        </h1>
+        <p class="hero-desc" data-i18n="hero_desc">
+          基于 mijiaAPI 5.x 构建的产品化米家 MCP Server。无需客户端理解底层 did、siid/piid 协议细节，围绕“家庭、房间、设备名、场景名”即可完成高速批量读取与精准控制。
+        </p>
+        <div class="hero-actions">
+          <a class="btn btn-primary" href="https://github.com/javen-yan/miot-mcp" target="_blank" rel="noopener">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+              <path d="M12 .5C5.65.5.5 5.65.5 12c0 5.09 3.29 9.4 7.86 10.92.58.11.79-.25.79-.56 0-.28-.01-1.02-.02-2-3.2.7-3.88-1.54-3.88-1.54-.52-1.33-1.28-1.68-1.28-1.68-1.05-.71.08-.7.08-.7 1.16.08 1.77 1.19 1.77 1.19 1.03 1.76 2.7 1.25 3.36.96.1-.75.4-1.25.73-1.54-2.55-.29-5.24-1.28-5.24-5.68 0-1.26.45-2.28 1.18-3.09-.12-.29-.51-1.46.11-3.05 0 0 .97-.31 3.17 1.18a11.05 11.05 0 0 1 5.78 0c2.2-1.49 3.16-1.18 3.16-1.18.63 1.59.24 2.76.12 3.05.74.81 1.18 1.83 1.18 3.09 0 4.41-2.69 5.38-5.26 5.67.41.36.78 1.06.78 2.14 0 1.55-.01 2.79-.01 3.17 0 .31.21.68.8.56A11.51 11.51 0 0 0 23.5 12C23.5 5.65 18.35.5 12 .5Z"/>
+            </svg>
+            <span data-i18n="btn_github">GitHub 源码</span>
+          </a>
+          <a class="btn" href="#quickstart" data-i18n="btn_quickstart">配置 MCP 客户端</a>
+          <a class="btn" href="https://pypi.org/project/miot-mcp/" target="_blank" rel="noopener">PyPI · miot-mcp</a>
+        </div>
+        <div class="hero-metrics">
+          <div>
+            <div class="metric-val">23+</div>
+            <div class="metric-label" data-i18n="metric_tools">产品级 MCP 工具</div>
+          </div>
+          <div>
+            <div class="metric-val">MIoT 5.0</div>
+            <div class="metric-label" data-i18n="metric_spec">官方物模型自动对齐</div>
+          </div>
+          <div>
+            <div class="metric-val">Batch I/O</div>
+            <div class="metric-label" data-i18n="metric_batch">单次请求批量状态读写</div>
+          </div>
+        </div>
       </div>
-      <div class="card">
-        <h3>真实家庭场景</h3>
-        <p>支持按家庭与房间浏览、共享设备、多键开关分路子设备定位及自然语言意图控制。</p>
-      </div>
-      <div class="card">
-        <h3>官方物模型对齐</h3>
-        <p>对接 miot-spec.org，自动处理多服务属性去重、中英文枚举映射与数值步长对齐。</p>
-      </div>
-      <div class="card">
-        <h3>高速批量读写</h3>
-        <p>单次请求批量读取设备状态，支持 passToken 静默续期与后台非阻塞扫码登录。</p>
+
+      <!-- Interactive Demo Console -->
+      <div class="console-card">
+        <div class="console-header">
+          <div class="window-dots">
+            <span class="dot-red"></span>
+            <span class="dot-amber"></span>
+            <span class="dot-green"></span>
+          </div>
+          <div class="console-tabs" role="tablist">
+            <button class="console-tab active" data-tab="intent" type="button">control_by_intent</button>
+            <button class="console-tab" data-tab="overview" type="button">get_home_overview</button>
+            <button class="console-tab" data-tab="device" type="button">control_device</button>
+            <button class="console-tab" data-tab="scene" type="button">execute_scene</button>
+          </div>
+        </div>
+        <div class="console-body">
+          <pre id="consoleOutput"></pre>
+        </div>
       </div>
     </section>
 
-    <section>
-      <h2>快速开始</h2>
-      <pre><code>pip install -r requirements.txt
-python mcp_server/mcp_server.py</code></pre>
+    <!-- Core Features -->
+    <section id="features">
+      <div class="section-head">
+        <div class="section-eyebrow">ARCHITECTURE & HIGHLIGHTS</div>
+        <h2 class="section-title" data-i18n="feat_title">为什么选择产品化的米家 MCP？</h2>
+        <p class="section-sub" data-i18n="feat_sub">
+          告别繁琐的协议字典查找与阻塞式扫码弹窗，让 Claude、Cursor、Windsurf 等 AI 客户端即刻拥有可靠的智能家居控制力。
+        </p>
+      </div>
 
-      <h2>MCP 客户端配置</h2>
-      <pre><code>{
+      <div class="features-grid">
+        <div class="feature-card">
+          <div class="feature-icon">🏠</div>
+          <h3 data-i18n="f1_title">面向真实家庭拓扑</h3>
+          <p data-i18n="f1_desc">先看家庭与房间，再定位设备。原生支持共享设备以及多键墙壁开关拆分的分路子设备（.s2 / .s3）。</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">🧭</div>
+          <h3 data-i18n="f2_title">自然语言意图 + 强类型双引擎</h3>
+          <p data-i18n="f2_desc">既支持一句话如“把卧室台灯亮度调到 30%”的意图控制，也支持按标准 capability schema 结构化调用。</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">📐</div>
+          <h3 data-i18n="f3_title">官方物模型自动对齐</h3>
+          <p data-i18n="f3_desc">对接 miot-spec.org，自动处理多服务属性去重（on-2/mode-2）、中英文枚举映射与数值步长对齐。</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">⚡</div>
+          <h3 data-i18n="f4_title">高速批量读写与静默续期</h3>
+          <p data-i18n="f4_desc">单次云端请求批量读取多设备状态；基于 passToken 自动静默续期，后台非阻塞生成浏览器扫码页。</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">🔌</div>
+          <h3 data-i18n="f5_title">双层全量设备覆盖</h3>
+          <p data-i18n="f5_desc">高频设备采用标准能力直达（开关、亮度、色温、空调温控、窗帘、风速），长尾设备平滑回退至物模型属性/动作调用。</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">📦</div>
+          <h3 data-i18n="f6_title">结构化 MCP 资源暴露</h3>
+          <p data-i18n="f6_desc">提供 mijia://homes、devices、scenes、capabilities、service 等 6 大资源 URI，方便 AI 上下文即时挂载。</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Recommended Workflow -->
+    <section id="workflow">
+      <div class="section-head">
+        <div class="section-eyebrow">BEST PRACTICE WORKFLOW</div>
+        <h2 class="section-title" data-i18n="wf_title">AI 客户端推荐调用路径</h2>
+        <p class="section-sub" data-i18n="wf_sub">
+          专为大模型工具链设计的四步闭环，每次调用均返回清晰的 next_steps 指引。
+        </p>
+      </div>
+
+      <div class="workflow-rail">
+        <div class="step-card">
+          <span class="step-num">STEP 01 · AUTH</span>
+          <h4 data-i18n="s1_title">连接与非阻塞扫码</h4>
+          <p data-i18n="s1_desc">调用 get_service_status 或 prepare_login，自动打开本地 ~/.miot-mcp/qr.html 扫码并持久化凭证。</p>
+        </div>
+        <div class="step-card">
+          <span class="step-num">STEP 02 · DISCOVER</span>
+          <h4 data-i18n="s2_title">全屋家庭与房间总览</h4>
+          <p data-i18n="s2_desc">通过 get_home_overview 一次性建立“家庭 → 房间 → 设备与在线状态”的空间拓扑认知。</p>
+        </div>
+        <div class="step-card">
+          <span class="step-num">STEP 03 · INSPECT</span>
+          <h4 data-i18n="s3_title">读取状态与能力 Schema</h4>
+          <p data-i18n="s3_desc">调用 get_device_status 与 get_device_capabilities 获取可调范围、步长与枚举值。</p>
+        </div>
+        <div class="step-card">
+          <span class="step-num">STEP 04 · EXECUTE</span>
+          <h4 data-i18n="s4_title">意图控制与场景触发</h4>
+          <p data-i18n="s4_desc">使用 control_by_intent、control_device 或 execute_scene 精准完成控制并校验返回结果。</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Tool Matrix -->
+    <section id="tools">
+      <div class="section-head">
+        <div class="section-eyebrow">TOOL & RESOURCE CATALOG</div>
+        <h2 class="section-title" data-i18n="tools_title">全量 MCP 工具与资源矩阵</h2>
+        <p class="section-sub" data-i18n="tools_sub">
+          显式定义表驱动，不依赖黑盒插件扫描，确保 AI 客户端长会话调用的稳定性。
+        </p>
+      </div>
+
+      <div class="catalog-grid">
+        <div class="catalog-box">
+          <h3>
+            <span data-i18n="cat_auth">🔐 服务与登录</span>
+            <span class="catalog-count">7 tools</span>
+          </h3>
+          <div class="chip-list">
+            <span class="chip">get_service_status</span>
+            <span class="chip">prepare_login</span>
+            <span class="chip">reconnect_service</span>
+            <span class="chip">clear_saved_login</span>
+            <span class="chip">refresh_devices</span>
+            <span class="chip">get_tool_catalog</span>
+            <span class="chip">ping</span>
+          </div>
+        </div>
+
+        <div class="catalog-box">
+          <h3>
+            <span data-i18n="cat_home">🏡 家庭与设备查询</span>
+            <span class="catalog-count">6 tools</span>
+          </h3>
+          <div class="chip-list">
+            <span class="chip">get_home_overview</span>
+            <span class="chip">list_homes</span>
+            <span class="chip">list_devices</span>
+            <span class="chip">get_device</span>
+            <span class="chip">get_device_status</span>
+            <span class="chip">get_device_capabilities</span>
+          </div>
+        </div>
+
+        <div class="catalog-box">
+          <h3>
+            <span data-i18n="cat_ctrl">🎛️ 智能设备控制</span>
+            <span class="catalog-count">10 tools</span>
+          </h3>
+          <div class="chip-list">
+            <span class="chip">control_by_intent</span>
+            <span class="chip">control_device</span>
+            <span class="chip">turn_on_device</span>
+            <span class="chip">turn_off_device</span>
+            <span class="chip">set_brightness</span>
+            <span class="chip">set_color_temperature</span>
+            <span class="chip">set_target_temperature</span>
+            <span class="chip">set_hvac_mode</span>
+            <span class="chip">set_fan_speed</span>
+            <span class="chip">set_cover_position</span>
+          </div>
+        </div>
+
+        <div class="catalog-box">
+          <h3>
+            <span data-i18n="cat_scene">🎬 场景、耗材与资源</span>
+            <span class="catalog-count">3 tools · 6 resources</span>
+          </h3>
+          <div class="chip-list">
+            <span class="chip">list_scenes</span>
+            <span class="chip">execute_scene</span>
+            <span class="chip">get_consumable_items</span>
+            <span class="chip">mijia://service</span>
+            <span class="chip">mijia://homes</span>
+            <span class="chip">mijia://devices</span>
+            <span class="chip">mijia://scenes</span>
+            <span class="chip">mijia://capabilities</span>
+            <span class="chip">mijia://tooling</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Quickstart -->
+    <section id="quickstart">
+      <div class="section-head">
+        <div class="section-eyebrow">QUICK START</div>
+        <h2 class="section-title" data-i18n="qs_title">3 分钟快速接入</h2>
+        <p class="section-sub" data-i18n="qs_sub">
+          要求 Python 3.10+。推荐使用虚拟环境中的 Python 解释器直接挂载到 Claude Desktop、Cursor 或其他 MCP 客户端。
+        </p>
+      </div>
+
+      <div class="quickstart-grid">
+        <div class="code-panel">
+          <div class="code-panel-head">
+            <span data-i18n="qs_install_label">1. 安装与本地握手测试</span>
+            <button class="copy-btn" data-copy="installCode" type="button">Copy</button>
+          </div>
+          <pre id="installCode"><code># 使用 Poetry 安装
+poetry install
+
+# 或使用 pip 安装依赖
+pip install -r requirements.txt
+
+# 启动 MCP Server
+poetry run python mcp_server/mcp_server.py
+
+# 运行握手自检
+poetry run python mcp_server/mcp_test.py</code></pre>
+        </div>
+
+        <div class="code-panel">
+          <div class="code-panel-head">
+            <span>2. mcpServers 配置 (Claude / Cursor / Windsurf)</span>
+            <button class="copy-btn" data-copy="mcpConfigCode" type="button">Copy</button>
+          </div>
+          <pre id="mcpConfigCode"><code>{
   "mcpServers": {
     "mijia": {
       "command": "/path/to/venv/bin/python",
-      "args": ["/path/to/miot-mcp/mcp_server/mcp_server.py"],
+      "args": [
+        "/path/to/miot-mcp/mcp_server/mcp_server.py"
+      ],
       "env": {
         "MIJIA_ENABLE_QR": "true",
         "MIJIA_QR_OPEN_MODE": "browser",
@@ -191,11 +898,235 @@ python mcp_server/mcp_server.py</code></pre>
     }
   }
 }</code></pre>
+        </div>
+      </div>
     </section>
+  </main>
 
-    <footer>
-      MIT License · <a href="https://github.com/javen-yan/miot-mcp">javen-yan/miot-mcp</a>
-    </footer>
-  </div>
+  <footer>
+    <div class="container footer-inner">
+      <div>
+        <strong>miot-mcp</strong> · MIT License · Crafted by <a href="https://github.com/javen-yan" target="_blank" rel="noopener">Javen Yan</a>
+      </div>
+      <div class="footer-links">
+        <a href="https://github.com/javen-yan/miot-mcp" target="_blank" rel="noopener">GitHub</a>
+        <a href="https://github.com/javen-yan/miot-mcp/blob/master/README.md" target="_blank" rel="noopener">中文文档</a>
+        <a href="https://github.com/javen-yan/miot-mcp/blob/master/README_EN.md" target="_blank" rel="noopener">English README</a>
+        <a href="https://pypi.org/project/miot-mcp/" target="_blank" rel="noopener">PyPI</a>
+      </div>
+    </div>
+  </footer>
+
+  <script>
+    const snippets = {
+      intent: `<span class="tok-comment">// Request · 自然语言意图控制</span>
+{
+  <span class="tok-key">"name"</span>: <span class="tok-str">"control_by_intent"</span>,
+  <span class="tok-key">"arguments"</span>: {
+    <span class="tok-key">"query"</span>: <span class="tok-str">"把卧室台灯亮度调到30%"</span>
+  }
+}
+
+<span class="tok-comment">// Response · 自动解析房间、设备与标准能力</span>
+{
+  <span class="tok-key">"ok"</span>: <span class="tok-bool">true</span>,
+  <span class="tok-key">"matched_intent"</span>: <span class="tok-str">"set_brightness"</span>,
+  <span class="tok-key">"device"</span>: {
+    <span class="tok-key">"name"</span>: <span class="tok-str">"米家台灯 Pro"</span>,
+    <span class="tok-key">"room"</span>: <span class="tok-str">"卧室"</span>
+  },
+  <span class="tok-key">"applied"</span>: { <span class="tok-key">"brightness"</span>: <span class="tok-num">30</span> }
+}`,
+      overview: `<span class="tok-comment">// Request · 获取全屋家庭与房间设备拓扑</span>
+{
+  <span class="tok-key">"name"</span>: <span class="tok-str">"get_home_overview"</span>,
+  <span class="tok-key">"arguments"</span>: {}
+}
+
+<span class="tok-comment">// Response · 按家庭与房间聚合</span>
+{
+  <span class="tok-key">"ok"</span>: <span class="tok-bool">true</span>,
+  <span class="tok-key">"homes"</span>: [
+    {
+      <span class="tok-key">"home_name"</span>: <span class="tok-str">"我的家"</span>,
+      <span class="tok-key">"rooms"</span>: [
+        { <span class="tok-key">"room"</span>: <span class="tok-str">"客厅"</span>, <span class="tok-key">"devices"</span>: [<span class="tok-str">"吸顶灯"</span>, <span class="tok-str">"客厅空调"</span>, <span class="tok-str">"梦幻窗帘"</span>] },
+        { <span class="tok-key">"room"</span>: <span class="tok-str">"卧室"</span>, <span class="tok-key">"devices"</span>: [<span class="tok-str">"米家台灯 Pro"</span>, <span class="tok-str">"加湿器"</span>] }
+      ]
+    }
+  ]
+}`,
+      device: `<span class="tok-comment">// Request · 统一结构化能力控制</span>
+{
+  <span class="tok-key">"name"</span>: <span class="tok-str">"control_device"</span>,
+  <span class="tok-key">"arguments"</span>: {
+    <span class="tok-key">"operation"</span>: <span class="tok-str">"set_color_temperature"</span>,
+    <span class="tok-key">"device_name"</span>: <span class="tok-str">"吸顶灯"</span>,
+    <span class="tok-key">"room"</span>: <span class="tok-str">"客厅"</span>,
+    <span class="tok-key">"value"</span>: <span class="tok-num">4000</span>
+  }
+}
+
+<span class="tok-comment">// Response · 物模型范围与步长自动对齐</span>
+{
+  <span class="tok-key">"ok"</span>: <span class="tok-bool">true</span>,
+  <span class="tok-key">"operation"</span>: <span class="tok-str">"set_color_temperature"</span>,
+  <span class="tok-key">"value"</span>: <span class="tok-num">4000</span>,
+  <span class="tok-key">"unit"</span>: <span class="tok-str">"K"</span>
+}`,
+      scene: `<span class="tok-comment">// Request · 一键触发米家手动场景</span>
+{
+  <span class="tok-key">"name"</span>: <span class="tok-str">"execute_scene"</span>,
+  <span class="tok-key">"arguments"</span>: {
+    <span class="tok-key">"scene_name"</span>: <span class="tok-str">"回家模式"</span>
+  }
+}
+
+<span class="tok-comment">// Response</span>
+{
+  <span class="tok-key">"ok"</span>: <span class="tok-bool">true</span>,
+  <span class="tok-key">"scene_name"</span>: <span class="tok-str">"回家模式"</span>,
+  <span class="tok-key">"status"</span>: <span class="tok-str">"executed"</span>
+}`
+    };
+
+    const consoleOutput = document.getElementById("consoleOutput");
+    const tabs = document.querySelectorAll(".console-tab");
+
+    function renderTab(key) {
+      consoleOutput.innerHTML = snippets[key] || snippets.intent;
+      tabs.forEach((btn) => {
+        btn.classList.toggle("active", btn.dataset.tab === key);
+      });
+    }
+
+    tabs.forEach((btn) => {
+      btn.addEventListener("click", () => renderTab(btn.dataset.tab));
+    });
+    renderTab("intent");
+
+    // Copy buttons
+    document.querySelectorAll(".copy-btn").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const target = document.getElementById(btn.dataset.copy);
+        if (!target) return;
+        navigator.clipboard.writeText(target.innerText).then(() => {
+          const prev = btn.textContent;
+          btn.textContent = "Copied ✓";
+          setTimeout(() => { btn.textContent = prev; }, 1600);
+        });
+      });
+    });
+
+    // Bilingual dictionary
+    const i18n = {
+      zh: {
+        nav_features: "核心特性",
+        nav_workflow: "调用路径",
+        nav_tools: "工具矩阵",
+        nav_quickstart: "快速接入",
+        hero_badge: "官方 miot-spec.org 物模型驱动 · 面向 AI 智能体",
+        hero_title_1: "用自然语言与标准工具掌控",
+        hero_title_2: "全屋米家智能设备",
+        hero_desc: "基于 mijiaAPI 5.x 构建的产品化米家 MCP Server。无需客户端理解底层 did、siid/piid 协议细节，围绕“家庭、房间、设备名、场景名”即可完成高速批量读取与精准控制。",
+        btn_github: "GitHub 源码",
+        btn_quickstart: "配置 MCP 客户端",
+        metric_tools: "产品级 MCP 工具",
+        metric_spec: "官方物模型自动对齐",
+        metric_batch: "单次请求批量状态读写",
+        feat_title: "为什么选择产品化的米家 MCP？",
+        feat_sub: "告别繁琐的协议字典查找与阻塞式扫码弹窗，让 Claude、Cursor、Windsurf 等 AI 客户端即刻拥有可靠的智能家居控制力。",
+        f1_title: "面向真实家庭拓扑",
+        f1_desc: "先看家庭与房间，再定位设备。原生支持共享设备以及多键墙壁开关拆分的分路子设备（.s2 / .s3）。",
+        f2_title: "自然语言意图 + 强类型双引擎",
+        f2_desc: "既支持一句话如“把卧室台灯亮度调到 30%”的意图控制，也支持按标准 capability schema 结构化调用。",
+        f3_title: "官方物模型自动对齐",
+        f3_desc: "对接 miot-spec.org，自动处理多服务属性去重（on-2/mode-2）、中英文枚举映射与数值步长对齐。",
+        f4_title: "高速批量读写与静默续期",
+        f4_desc: "单次云端请求批量读取多设备状态；基于 passToken 自动静默续期，后台非阻塞生成浏览器扫码页。",
+        f5_title: "双层全量设备覆盖",
+        f5_desc: "高频设备采用标准能力直达（开关、亮度、色温、空调温控、窗帘、风速），长尾设备平滑回退至物模型属性/动作调用。",
+        f6_title: "结构化 MCP 资源暴露",
+        f6_desc: "提供 mijia://homes、devices、scenes、capabilities、service 等 6 大资源 URI，方便 AI 上下文即时挂载。",
+        wf_title: "AI 客户端推荐调用路径",
+        wf_sub: "专为大模型工具链设计的四步闭环，每次调用均返回清晰的 next_steps 指引。",
+        s1_title: "连接与非阻塞扫码",
+        s1_desc: "调用 get_service_status 或 prepare_login，自动打开本地 ~/.miot-mcp/qr.html 扫码并持久化凭证。",
+        s2_title: "全屋家庭与房间总览",
+        s2_desc: "通过 get_home_overview 一次性建立“家庭 → 房间 → 设备与在线状态”的空间拓扑认知。",
+        s3_title: "读取状态与能力 Schema",
+        s3_desc: "调用 get_device_status 与 get_device_capabilities 获取可调范围、步长与枚举值。",
+        s4_title: "意图控制与场景触发",
+        s4_desc: "使用 control_by_intent、control_device 或 execute_scene 精准完成控制并校验返回结果。",
+        tools_title: "全量 MCP 工具与资源矩阵",
+        tools_sub: "显式定义表驱动，不依赖黑盒插件扫描，确保 AI 客户端长会话调用的稳定性。",
+        cat_auth: "🔐 服务与登录",
+        cat_home: "🏡 家庭与设备查询",
+        cat_ctrl: "🎛️ 智能设备控制",
+        cat_scene: "🎬 场景、耗材与资源",
+        qs_title: "3 分钟快速接入",
+        qs_sub: "要求 Python 3.10+。推荐使用虚拟环境中的 Python 解释器直接挂载到 Claude Desktop、Cursor 或其他 MCP 客户端。",
+        qs_install_label: "1. 安装与本地握手测试"
+      },
+      en: {
+        nav_features: "Features",
+        nav_workflow: "Workflow",
+        nav_tools: "Tool Matrix",
+        nav_quickstart: "Quick Start",
+        hero_badge: "Powered by Official miot-spec.org · Built for AI Agents",
+        hero_title_1: "Control Your Entire Xiaomi Smart Home",
+        hero_title_2: "with Natural Language & MCP",
+        hero_desc: "A productized Mijia MCP Server built on mijiaAPI 5.x. AI clients never need raw did or siid/piid numbers—just query and control by Home, Room, Device Name, and Scene.",
+        btn_github: "View on GitHub",
+        btn_quickstart: "Configure MCP Client",
+        metric_tools: "Product-Level Tools",
+        metric_spec: "Official Spec Coercion",
+        metric_batch: "Single-Call Batch Read",
+        feat_title: "Why a Productized Mijia MCP?",
+        feat_sub: "Skip brittle protocol lookups and blocking auth popups. Give Claude, Cursor, and Windsurf reliable smart-home control out of the box.",
+        f1_title: "Home & Room First Topology",
+        f1_desc: "Browse homes and rooms before resolving devices. Native support for shared devices and split multi-gang switch channels (.s2 / .s3).",
+        f2_title: "Natural Intent + Typed Schema",
+        f2_desc: "Control with natural sentences via control_by_intent or execute deterministic calls with typed capability schemas.",
+        f3_title: "Official MIoT-Spec Alignment",
+        f3_desc: "Auto-resolves multi-service deduplicated properties (on-2/mode-2), bilingual enums, and value step constraints.",
+        f4_title: "Fast Batch I/O & Silent Auth",
+        f4_desc: "Batch property reads in a single cloud request, automatic passToken renewal, and non-blocking browser QR login.",
+        f5_title: "Two-Layer Device Coverage",
+        f5_desc: "First-class tools for lighting, HVAC, fans, and covers, plus seamless set_property / run_action fallback for any MIoT device.",
+        f6_title: "Rich MCP Resources",
+        f6_desc: "Exposes mijia://homes, devices, scenes, capabilities, service, and tooling URIs for instant LLM context grounding.",
+        wf_title: "Recommended Agent Workflow",
+        wf_sub: "A four-step loop designed for LLM tool-calling with structured next_steps guidance on every response.",
+        s1_title: "Non-Blocking QR Login",
+        s1_desc: "Call get_service_status or prepare_login to launch ~/.miot-mcp/qr.html and persist session credentials.",
+        s2_title: "Home & Room Overview",
+        s2_desc: "Call get_home_overview once to map out Homes → Rooms → Devices and online states.",
+        s3_title: "Inspect Status & Schema",
+        s3_desc: "Use get_device_status and get_device_capabilities to inspect valid ranges, steps, and enum options.",
+        s4_title: "Execute Intent or Scene",
+        s4_desc: "Trigger control_by_intent, control_device, or execute_scene with deterministic result verification.",
+        tools_title: "Complete MCP Tool & Resource Matrix",
+        tools_sub: "Explicit definition tables without magic plugin scanning for rock-solid agent reliability.",
+        cat_auth: "🔐 Service & Auth",
+        cat_home: "🏡 Home & Device Discovery",
+        cat_ctrl: "🎛️ Smart Device Control",
+        cat_scene: "🎬 Scenes, Consumables & URIs",
+        qs_title: "Get Started in 3 Minutes",
+        qs_sub: "Requires Python 3.10+. Point your MCP client directly to the virtual environment's Python binary.",
+        qs_install_label: "1. Install & Handshake Test"
+      }
+    };
+
+    let currentLang = "zh";
+    document.getElementById("langToggle").addEventListener("click", () => {
+      currentLang = currentLang === "zh" ? "en" : "zh";
+      const dict = i18n[currentLang];
+      document.querySelectorAll("[data-i18n]").forEach((el) => {
+        const key = el.getAttribute("data-i18n");
+        if (dict[key]) el.textContent = dict[key];
+      });
+    });
+  </script>
 </body>
 </html>
