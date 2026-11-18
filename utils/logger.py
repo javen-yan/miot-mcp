@@ -31,8 +31,15 @@ def setup_logging(log_level: str = "INFO", log_dir: Optional[Path] = None) -> Pa
     # 创建日志目录
     if log_dir is None:
         log_dir = Path.home() / '.miot-mcp'
-    log_dir.mkdir(exist_ok=True)
-    _log_file_path = log_dir / 'run.log'
+    try:
+        log_dir.mkdir(parents=True, exist_ok=True)
+        _log_file_path = log_dir / 'run.log'
+        file_handler = logging.FileHandler(_log_file_path, encoding='utf-8')
+    except OSError:
+        log_dir = Path('/tmp/.miot-mcp')
+        log_dir.mkdir(parents=True, exist_ok=True)
+        _log_file_path = log_dir / 'run.log'
+        file_handler = logging.FileHandler(_log_file_path, encoding='utf-8')
     
     # 创建格式化器
     formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -50,7 +57,6 @@ def setup_logging(log_level: str = "INFO", log_dir: Optional[Path] = None) -> Pa
     root_logger.addHandler(stderr_handler)
     
     # 添加文件处理器
-    file_handler = logging.FileHandler(_log_file_path, encoding='utf-8')
     file_handler.setFormatter(formatter)
     root_logger.addHandler(file_handler)
     

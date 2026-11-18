@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "miot-mcp"
-version = "2.0.0"
+version = "2.1.0"
 authors = [
     {name = "Javen Yan", email = "2023335616@qq.com"},
 ]
@@ -26,7 +26,7 @@ classifiers = [
 keywords = ["xiaomi", "mijia", "iot", "smart-home", "mcp", "automation"]
 dependencies = [
     "mcp>=1.13.0",
-    "mijiaAPI>=3.0.5",
+    "mijiaAPI>=5.0.0",
     "Pillow>=10.0.0",
     "qrcode[pil]>=8.2",
 ]

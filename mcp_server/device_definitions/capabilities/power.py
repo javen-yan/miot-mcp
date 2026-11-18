@@ -1,7 +1,7 @@
 STANDARD_CAPABILITIES = {
     "power": {
         "kind": "property",
-        "aliases": ["on", "switch-status", "power", "status"],
+        "aliases": ["on", "switch-status", "switch_status", "power", "power-on", "power_on"],
         "label": "Power",
         "value_type": "boolean",
         "value_resolution": ["boolean"],
@@ -12,7 +12,7 @@ STANDARD_CAPABILITIES = {
     },
     "toggle": {
         "kind": "action",
-        "aliases": ["toggle"],
+        "aliases": ["toggle", "toggle-switch", "toggle_switch"],
         "label": "Toggle",
         "value_type": "none",
         "preferred_tool": "control_device",

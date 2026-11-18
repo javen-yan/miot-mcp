@@ -1,7 +1,7 @@
-"""Mijia device adapter based on MijiaAPI"""
-from typing import Dict, List, Any, Optional
+"""Mijia device adapter based on MijiaAPI 5.x"""
+from typing import Dict, List, Any, Optional, Union
 from html import escape
-from mijiaAPI import mijiaAPI, mijiaDevice
+from mijiaAPI import mijiaAPI, mijiaDevice, get_device_info
 from config.mijia_config import load_mijia_config, MijiaConfig
 from utils.logger import get_logger
 from utils.auth_manager import AuthDataManager
@@ -35,7 +35,11 @@ class MijiaAdapter:
         self._last_status_update: Optional[datetime] = None
         self._scene_home_map: Dict[str, str] = {}
         self._last_qr_login_url: Optional[str] = None
+        self._last_qr_image_url: Optional[str] = None
         self._last_qr_generated_at: Optional[str] = None
+        self._login_thread: Optional[threading.Thread] = None
+        self._login_state: str = "idle"
+        self._login_error: Optional[str] = None
         self._config = load_mijia_config()
         self._auth_manager = AuthDataManager()
         # Patch mijiaAPI to avoid encoding issues with QR code display
@@ -206,22 +210,56 @@ class MijiaAdapter:
                 _LOGGER.error(f'Failed to save QR code: {e}')
                 raise
         
-        # Replace the problematic _print_qr method in mijiaAPI 3.x
+        # Replace the problematic _print_qr method in mijiaAPI
         mijiaAPI._print_qr = staticmethod(safe_print_qr)
-        
-    async def connect(self) -> bool:
+
+    def _start_qr_login_background(self, api: mijiaAPI, login_data: Dict[str, Any]) -> None:
+        """Complete QR long-polling in a background thread so MCP calls never hang."""
+        def worker():
+            try:
+                self._login_state = "pending"
+                self._login_error = None
+                auth_data = api._complete_qr_login(login_data)
+                self._auth_data = auth_data
+                self._api = api
+                self._connected = True
+                self._login_state = "success"
+                _LOGGER.info("Background QR login completed successfully")
+            except Exception as exc:
+                self._login_state = "error"
+                self._login_error = str(exc)
+                _LOGGER.warning(f"Background QR login ended without completion: {exc}")
+
+        self._login_thread = threading.Thread(target=worker, daemon=True)
+        self._login_thread.start()
+
+    async def connect(self, non_blocking_qr: bool = True) -> bool:
         """Connect to Mijia cloud service
 
+        Args:
+            non_blocking_qr: When True, starts QR scan polling in background instead of blocking 120s.
+
         Returns:
-            bool: Whether connection is successful
+            bool: Whether connection is immediately ready
         """
         try:
             _LOGGER.info("Starting connection to Mijia cloud service...")
-            
+
             if not self._config:
                 error_msg = "Mijia configuration not loaded, please check config file or environment variables"
                 _LOGGER.error(error_msg)
                 raise ValueError(error_msg)
+
+            # Check if an existing background QR login just succeeded
+            if self._api is not None and self._login_state == "success" and self._api.available:
+                self._connected = True
+                self._auth_data = self._api.auth_data
+                return True
+
+            # If a QR login thread is actively waiting for user scan, do not start a duplicate
+            if self._login_thread is not None and self._login_thread.is_alive():
+                _LOGGER.info("QR login is currently pending user scan in background")
+                return False
 
             auth_path = str(self._auth_manager.get_file_path())
             auth_data = self._auth_manager.load()
@@ -233,16 +271,37 @@ class MijiaAdapter:
             self._api = mijiaAPI(auth_path)
 
             if not self._api.available:
+                # Try silent token refresh first (supported by mijiaAPI 5.x when passToken is valid)
+                if self._auth_manager.exists() and hasattr(self._api, "_refresh_token"):
+                    try:
+                        self._api._refresh_token()
+                    except Exception as refresh_exc:
+                        _LOGGER.debug(f"Silent token refresh did not succeed: {refresh_exc}")
+
+            if not self._api.available:
                 if not self._config.enableQR:
-                    _LOGGER.warning("mijiaAPI 3.x only supports QR login; forcing QR flow")
+                    _LOGGER.warning("mijiaAPI only supports QR login; forcing QR flow")
                 _LOGGER.info("Starting QR code login flow")
-                self._auth_data = self._api.login()
+                if non_blocking_qr and hasattr(self._api, "_get_qr_login_data") and hasattr(self._api, "_complete_qr_login"):
+                    login_data = self._api._get_qr_login_data()
+                    if login_data.get("refreshed"):
+                        self._auth_data = self._api.auth_data
+                        self._connected = True
+                        self._login_state = "success"
+                        return True
+                    self._last_qr_image_url = login_data.get("qr")
+                    self._api._print_qr(login_data["loginUrl"])
+                    self._start_qr_login_background(self._api, login_data)
+                    return False
+                else:
+                    self._auth_data = self._api.login()
             else:
                 self._auth_data = self._api.auth_data
-            
+
             # 检查 API 是否可用
             if self._api.available:
                 self._connected = True
+                self._login_state = "success"
                 _LOGGER.info("Successfully connected to Mijia cloud service")
                 return True
             else:
@@ -253,18 +312,18 @@ class MijiaAdapter:
                     _LOGGER.info("Expired authentication data cleared")
                 else:
                     _LOGGER.warning("Failed to clear expired authentication data")
-                
+
                 raise RuntimeError(error_msg)
-                
+
         except Exception as e:
             error_msg = f"Failed to connect to Mijia cloud service: {str(e)}"
             _LOGGER.error(error_msg)
             _LOGGER.debug(f"Detailed error information: {traceback.format_exc()}")
-            
+
             # 重置连接状态
             self._connected = False
             self._api = None
-            
+
             return False
 
     async def disconnect(self):
@@ -279,29 +338,31 @@ class MijiaAdapter:
             _LOGGER.info("Disconnected from Mijia cloud service")
         except Exception as e:
             _LOGGER.error(f"Error during disconnection: {e}")
-    
+
     def clear_auth_data(self) -> bool:
         """清除认证数据
-        
+
         Returns:
             bool: 是否清除成功
         """
         self._auth_data = None
+        self._login_state = "idle"
+        self._login_error = None
         return self._auth_manager.clear()
-    
+
     def has_valid_auth_data(self) -> bool:
         """检查是否有有效的认证数据
-        
+
         Returns:
             bool: 是否有有效的认证数据
         """
         if self._auth_data:
             return self._auth_manager.validate(self._auth_data)
         return self._auth_manager.exists() and self._auth_manager.validate()
-    
+
     def get_auth_file_path(self) -> Path:
         """获取认证数据文件路径
-        
+
         Returns:
             Path: 认证数据文件路径
         """
@@ -319,6 +380,7 @@ class MijiaAdapter:
         """Return the latest QR login artifact status."""
         qr_image_path = self.get_qr_image_path()
         qr_page_path = self.get_qr_page_path()
+        login_pending = bool(self._login_thread and self._login_thread.is_alive())
         return {
             "enabled": bool(self._config.enableQR) if self._config else True,
             "open_mode": getattr(self._config, "qr_open_mode", "browser") if self._config else "browser",
@@ -327,7 +389,10 @@ class MijiaAdapter:
             "page_path": str(qr_page_path),
             "page_exists": qr_page_path.exists(),
             "login_url": self._last_qr_login_url,
+            "qr_image_url": self._last_qr_image_url,
             "generated_at": self._last_qr_generated_at,
+            "login_state": "pending" if login_pending else self._login_state,
+            "login_error": self._login_error,
         }
 
     def open_qr_artifacts(self) -> bool:
@@ -524,14 +589,9 @@ class MijiaAdapter:
         Returns:
             List: Device action list
         """
-        if not self._connected:
-            raise RuntimeError("Not connected to Mijia cloud service")
-        
-        if device_id not in self._devices:
-            raise ValueError(f"Device {device_id} not found")
+        device = self._get_device(device_id)
         
         try:
-            device = self._devices[device_id]
             if not device.action_list:
                 return []
             return list(map(lambda x: x, device.action_list.values()))
@@ -550,16 +610,17 @@ class MijiaAdapter:
         Returns:
             Any: Property value
         """
-        if not self._connected:
+        if not self.connected:
             raise RuntimeError("Not connected to Mijia cloud service")
         
         try:
-            # Use API to get property directly
             result = self._api.get_devices_prop({
                 "did": device_id,
                 "siid": siid,
                 "piid": piid
             })
+            if isinstance(result, list):
+                result = result[0] if result else {}
 
             if result.get('code') == 0:
                 return result.get('value')
@@ -582,17 +643,18 @@ class MijiaAdapter:
         Returns:
             bool: Whether setting is successful
         """
-        if not self._connected:
+        if not self.connected:
             raise RuntimeError("Not connected to Mijia cloud service")
         
         try:
-            # Use API to set property directly
             result = self._api.set_devices_prop({
                 "did": device_id,
                 "siid": siid,
                 "piid": piid,
                 "value": value
             })
+            if isinstance(result, list):
+                result = result[0] if result else {}
 
             success = result.get('code') in (0, 1)
             if success:
@@ -617,23 +679,26 @@ class MijiaAdapter:
         Returns:
             List[Any]: Action result
         """
-        if not self._connected:
+        if not self.connected:
             raise RuntimeError("Not connected to Mijia cloud service")
         
         try:
-            # Use API to execute action directly
-            result = self._api.run_action({
+            payload: Dict[str, Any] = {
                 "did": device_id,
                 "siid": siid,
                 "aiid": aiid,
-                "value": params or []
-            })
+            }
+            if params:
+                payload["value"] = params
+            result = self._api.run_action(payload)
+            if isinstance(result, list):
+                result = result[0] if result else {}
             
-            if result.get('code') == 0:
+            if result.get('code') in (0, 1):
                 _LOGGER.info(f"Successfully executed action {siid}:{aiid} (device: {device_id})")
                 return result.get('out', [])
             else:
-                raise RuntimeError(f"Action execution failed, error code: {result.get('code')}")
+                raise RuntimeError(f"Action execution failed, error code: {result.get('code')} ({result.get('message', '')})")
                 
         except Exception as e:
             _LOGGER.error(f"Failed to execute action: {e}")
@@ -645,7 +710,7 @@ class MijiaAdapter:
         Returns:
             List[Dict[str, Any]]: Home list
         """
-        if not self._connected:
+        if not self.connected:
             raise RuntimeError("Not connected to Mijia cloud service")
         
         try:
@@ -665,7 +730,7 @@ class MijiaAdapter:
         Returns:
             List[Dict[str, Any]]: Scene list
         """
-        if not self._connected:
+        if not self.connected:
             raise RuntimeError("Not connected to Mijia cloud service")
         
         try:
@@ -688,7 +753,7 @@ class MijiaAdapter:
         Returns:
             bool: Whether running is successful
         """
-        if not self._connected:
+        if not self.connected:
             raise RuntimeError("Not connected to Mijia cloud service")
         
         try:
@@ -720,17 +785,36 @@ class MijiaAdapter:
         Returns:
             List[Dict[str, Any]]: Consumable item list
         """
-        if not self._connected:
+        if not self.connected:
             raise RuntimeError("Not connected to Mijia cloud service")
         
         try:
             if owner_id is not None:
-                _LOGGER.warning("owner_id is ignored by mijiaAPI 3.x; using home_id only")
+                _LOGGER.warning("owner_id is ignored by mijiaAPI; using home_id only")
             items = self._api.get_consumable_items(home_id)
             return items
         except Exception as e:
             _LOGGER.error(f"Failed to get consumable item list: {e}")
             raise
+
+    def _fetch_all_raw_devices(self) -> List[Dict[str, Any]]:
+        """Fetch both home devices and shared devices from Mijia cloud."""
+        raw_devices = list(self._api.get_devices_list() or [])
+        if hasattr(self._api, "get_shared_devices_list"):
+            try:
+                shared = self._api.get_shared_devices_list() or []
+                existing_dids = {str(item.get("did")) for item in raw_devices if item.get("did")}
+                for item in shared:
+                    if item.get("did") and str(item.get("did")) not in existing_dids:
+                        raw_devices.append(item)
+            except Exception as exc:
+                _LOGGER.debug(f"Could not fetch shared devices list: {exc}")
+        return raw_devices
+
+    def get_device_spec(self, spec_type: str) -> Dict[str, Any]:
+        """Fetch official MIoT device specification from miot-spec.org with local file caching."""
+        cache_dir = self._auth_manager.get_file_path().parent
+        return get_device_info(spec_type, cache_path=cache_dir)
 
     def _get_device(self, device_id: str) -> mijiaDevice:
         """Get device object
@@ -744,12 +828,40 @@ class MijiaAdapter:
         Raises:
             RuntimeError: If device does not exist or not connected
         """
-        if not self._connected:
+        if not self.connected:
             raise RuntimeError("Not connected to Mijia cloud service")
         
         if device_id not in self._devices:
             try:
-                self._devices[device_id] = mijiaDevice(self._api, did=device_id)
+                if device_id not in self._device_infos:
+                    raw_device_infos = self._fetch_all_raw_devices()
+                    self._device_infos = {
+                        str(item.get("did")): item for item in raw_device_infos if item.get("did")
+                    }
+
+                cached_info = self._device_infos.get(str(device_id))
+                original_get_devices_list = self._api.get_devices_list
+                if cached_info is not None:
+                    self._api.get_devices_list = lambda home_id=None: [cached_info]
+                try:
+                    dev = mijiaDevice(self._api, did=device_id, sleep_time=0.05)
+                finally:
+                    self._api.get_devices_list = original_get_devices_list
+
+                # For split sub-devices (e.g. "1094103858.s3"), MIoT RPC requires the physical parent did ("1094103858")
+                parent_did = None
+                if isinstance(cached_info, dict):
+                    extra = cached_info.get("extra")
+                    if isinstance(extra, dict) and isinstance(extra.get("split"), dict):
+                        parent_did = extra["split"].get("parentId")
+                if not parent_did and ".s" in str(device_id):
+                    base_did, _, suffix = str(device_id).rpartition(".s")
+                    if base_did and suffix.isdigit():
+                        parent_did = base_did
+                if parent_did:
+                    dev.did = str(parent_did)
+
+                self._devices[device_id] = dev
             except Exception as e:
                 raise RuntimeError(f"Device {device_id} not found or failed to initialize: {e}") from e
         
@@ -779,16 +891,16 @@ class MijiaAdapter:
 
     async def list_device_infos(self, refresh: bool = False) -> List[Dict[str, Any]]:
         """Return normalized raw device info entries."""
-        if not self._connected:
+        if not self.connected:
             raise RuntimeError("Not connected to Mijia cloud service")
 
         if refresh or not self._device_infos:
-            raw_device_infos = self._api.get_devices_list()
+            raw_device_infos = self._fetch_all_raw_devices()
             self._device_infos = {
                 str(item.get("did")): item for item in raw_device_infos if item.get("did")
             }
 
-        if not self._homes_cache:
+        if refresh or not self._homes_cache:
             self._homes_cache = self._api.get_homes_list()
 
         room_lookup = self._build_room_lookup()
@@ -820,32 +932,58 @@ class MijiaAdapter:
     ) -> List[Dict[str, Any]]:
         """Resolve devices by user-friendly filters."""
         devices = await self.list_device_infos(refresh=not self._device_infos)
-        resolved: List[Dict[str, Any]] = []
 
         query_lower = query.strip().lower()
         room_lower = room.strip().lower()
         home_lower = home.strip().lower()
         type_lower = device_type.strip().lower()
 
-        for device in devices:
-            device_name = str(device.get("name", "") or "").lower()
-            model = str(device.get("model", "") or "").lower()
-            did = str(device.get("did", "") or "").lower()
-            room_name = str(device.get("room_name", "") or "").lower()
-            home_name = str(device.get("home_name", "") or "").lower()
+        def _filter_pass(allow_room_in_device_name: bool = False) -> List[Dict[str, Any]]:
+            matched: List[Dict[str, Any]] = []
+            for device in devices:
+                device_name = str(device.get("name", "") or "").strip().lower()
+                model = str(device.get("model", "") or "").lower()
+                spec_type = str(device.get("spec_type", "") or "").lower()
+                did = str(device.get("did", "") or "").lower()
+                room_name = str(device.get("room_name", "") or "").strip().lower()
+                home_name = str(device.get("home_name", "") or "").strip().lower()
 
-            if query_lower and query_lower not in " ".join([device_name, model, did, room_name, home_name]):
-                continue
-            if room_lower and room_lower not in str(device.get("room_name", "") or "").lower():
-                continue
-            if home_lower and home_lower not in str(device.get("home_name", "") or "").lower():
-                continue
-            if type_lower and type_lower not in str(device.get("model", "") or "").lower():
-                continue
-            if online_only and not bool(device.get("isOnline", device.get("online", True))):
-                continue
-            resolved.append(device)
+                searchable = " ".join(
+                    [device_name, f"{room_name}{device_name}", model, spec_type, did, room_name, home_name]
+                )
+                effective_query = query_lower
+                if room_name and effective_query.startswith(room_name) and len(effective_query) > len(room_name):
+                    effective_query = effective_query[len(room_name) :].strip()
 
+                query_matched = (
+                    not effective_query
+                    or effective_query in searchable
+                    or query_lower in searchable
+                    or (len(device_name) >= 2 and (device_name in effective_query or device_name in query_lower))
+                )
+                if not query_matched:
+                    continue
+
+                if room_lower:
+                    if allow_room_in_device_name:
+                        if room_lower not in room_name and room_lower not in device_name:
+                            continue
+                    else:
+                        if room_lower not in room_name:
+                            continue
+
+                if home_lower and home_lower not in home_name:
+                    continue
+                if type_lower and type_lower not in model and type_lower not in spec_type:
+                    continue
+                if online_only and not bool(device.get("isOnline", device.get("online", True))):
+                    continue
+                matched.append(device)
+            return matched
+
+        resolved = _filter_pass(allow_room_in_device_name=False)
+        if not resolved and room_lower:
+            resolved = _filter_pass(allow_room_in_device_name=True)
         return resolved
 
     def _rank_device_matches(
@@ -872,6 +1010,14 @@ class MijiaAdapter:
         ]
         if fuzzy_name_matches:
             return fuzzy_name_matches
+
+        reverse_fuzzy_matches = [
+            device for device in devices
+            if len(str(device.get("name", "")).strip()) >= 2
+            and str(device.get("name", "")).strip().lower() in name_query
+        ]
+        if reverse_fuzzy_matches:
+            return sorted(reverse_fuzzy_matches, key=lambda d: len(str(d.get("name", ""))), reverse=True)
 
         prefix_name_matches = [
             device for device in devices
@@ -967,6 +1113,60 @@ class MijiaAdapter:
             raise RuntimeError(f"Multiple scenes matched. Candidates: {candidates}")
         return matches[0]
 
+    async def batch_get_property_values(self, device_id: str, property_names: List[str]) -> Dict[str, Any]:
+        """Batch fetch multiple readable properties for a device in a single cloud API request."""
+        if not property_names:
+            return {}
+        device = self._get_device(device_id)
+        prop_map = device.prop_list or {}
+        req_items: List[Dict[str, Any]] = []
+        key_by_siid_piid: Dict[tuple[int, int], List[str]] = {}
+
+        for name in property_names:
+            prop = prop_map.get(name) or prop_map.get(name.replace("_", "-"))
+            if not prop or "r" not in str(getattr(prop, "rw", "")).lower():
+                continue
+            method = getattr(prop, "method", None)
+            if not isinstance(method, dict) or "siid" not in method or "piid" not in method:
+                continue
+            siid = int(method["siid"])
+            piid = int(method["piid"])
+            pair = (siid, piid)
+            if pair not in key_by_siid_piid:
+                key_by_siid_piid[pair] = []
+                req_items.append({"did": device.did, "siid": siid, "piid": piid})
+            if name not in key_by_siid_piid[pair]:
+                key_by_siid_piid[pair].append(name)
+
+        if not req_items:
+            return {}
+
+        values: Dict[str, Any] = {}
+        chunk_size = 15
+        for idx in range(0, len(req_items), chunk_size):
+            chunk = req_items[idx : idx + chunk_size]
+            try:
+                raw_results = self._api.get_devices_prop(chunk)
+                if isinstance(raw_results, dict):
+                    raw_results = [raw_results]
+                for item in raw_results or []:
+                    if not isinstance(item, dict) or item.get("code") != 0:
+                        continue
+                    pair = (int(item.get("siid", -1)), int(item.get("piid", -1)))
+                    for prop_name in key_by_siid_piid.get(pair, []):
+                        values[prop_name] = item.get("value")
+            except Exception as exc:
+                _LOGGER.debug(f"Batch get_devices_prop failed for {device_id}, falling back to single read: {exc}")
+                for req in chunk:
+                    pair = (int(req["siid"]), int(req["piid"]))
+                    for prop_name in key_by_siid_piid.get(pair, []):
+                        try:
+                            values[prop_name] = await self.get_property_value(device_id, req["siid"], req["piid"])
+                        except Exception:
+                            continue
+
+        return values
+
     async def get_property_value_by_name(self, device_id: str, property_name: str) -> Any:
         """Get device property value by logical property name."""
         device = self._get_device(device_id)
@@ -987,11 +1187,21 @@ class MijiaAdapter:
             _LOGGER.error(f"Failed to set property {property_name} for {device_id}: {e}")
             raise
 
-    async def call_action_by_name(self, device_id: str, action_name: str, params: Optional[List[Any]] = None) -> bool:
+    async def call_action_by_name(
+        self,
+        device_id: str,
+        action_name: str,
+        params: Optional[Union[List[Any], Dict[str, Any]]] = None,
+    ) -> bool:
         """Call device action by logical action name."""
         device = self._get_device(device_id)
         try:
-            device.run_action(action_name, params or [])
+            if isinstance(params, dict):
+                device.run_action(action_name, **params)
+            elif isinstance(params, (list, tuple)) and len(params) > 0:
+                device.run_action(action_name, value=list(params))
+            else:
+                device.run_action(action_name)
             _LOGGER.info(f"Successfully executed action {action_name} (device: {device_id})")
             return True
         except Exception as e:
@@ -1001,12 +1211,18 @@ class MijiaAdapter:
     @property
     def connected(self) -> bool:
         """Whether connected"""
+        if not self._connected and self._api is not None and self._login_state == "success":
+            try:
+                if self._api.available:
+                    self._connected = True
+            except Exception:
+                pass
         return self._connected
     
     @property
     def device_count(self) -> int:
         """Device count"""
-        return len(self._devices)
+        return max(len(self._device_infos), len(self._devices))
     
     async def get_device_status(self, device_id: str) -> Dict[str, Any]:
         """Get device status information

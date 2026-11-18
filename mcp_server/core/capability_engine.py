@@ -1,8 +1,9 @@
 """Capability profile and value resolution engine."""
 
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from mcp_server.core.normalizers import (
+    extract_channel_siid,
     find_supported_action,
     find_supported_name,
     find_supported_property,
@@ -36,26 +37,41 @@ def capability_matches_device(definition: Dict[str, Any], device: Dict[str, Any]
 
 
 def infer_device_domains(device: Dict[str, Any], properties: List[Any], actions: List[Any]) -> List[str]:
-    domains: List[str] = []
+    primary_domains: List[str] = []
+    fallback_domains: List[str] = []
+    preferred_siid = extract_channel_siid(device)
+
     for capability_name, definition in CAPABILITY_REGISTRY.items():
         capability_domains = definition.get("domains", [])
         if not capability_domains:
             continue
-        if not capability_matches_device(definition, device):
-            continue
         matched = False
         if definition["kind"] == "property":
-            matched = find_supported_property(properties, definition["aliases"]) is not None
+            matched = (
+                find_supported_property(
+                    properties,
+                    definition["aliases"],
+                    preferred_siid=preferred_siid,
+                    expected_type=definition.get("value_type"),
+                )
+                is not None
+            )
         elif definition["kind"] == "action":
-            matched = find_supported_action(actions, definition["aliases"]) is not None
-        if matched:
-            for domain in capability_domains:
-                if domain not in domains:
-                    domains.append(domain)
+            matched = find_supported_action(actions, definition["aliases"], preferred_siid=preferred_siid) is not None
+        if not matched:
+            continue
+
+        target_list = primary_domains if capability_matches_device(definition, device) else fallback_domains
+        for domain in capability_domains:
+            if domain not in primary_domains and domain not in fallback_domains:
+                target_list.append(domain)
+
+    domains = primary_domains + [d for d in fallback_domains if d not in primary_domains]
     return domains or ["generic"]
 
 
 def get_capability_target(prop: Any, target_kind: str) -> Dict[str, Any]:
+    method = getattr(prop, "method", None)
     return {
         "kind": "property",
         "capability": target_kind,
@@ -67,29 +83,44 @@ def get_capability_target(prop: Any, target_kind: str) -> Dict[str, Any]:
         "unit": getattr(prop, "unit", None),
         "range": getattr(prop, "range", None),
         "value_list": getattr(prop, "value_list", None),
+        "siid": method.get("siid") if isinstance(method, dict) else None,
+        "piid": method.get("piid") if isinstance(method, dict) else None,
     }
 
 
 def get_action_target(action: Any, target_kind: str) -> Dict[str, Any]:
+    method = getattr(action, "method", None)
     return {
         "kind": "action",
         "capability": target_kind,
         "name": getattr(action, "name", None),
         "description": getattr(action, "desc", None),
+        "siid": method.get("siid") if isinstance(method, dict) else None,
+        "aiid": method.get("aiid") if isinstance(method, dict) else None,
     }
 
 
 def build_device_capability_profile(device: Dict[str, Any], properties: List[Any], actions: List[Any]) -> Dict[str, Any]:
     controls: Dict[str, Dict[str, Any]] = {}
+    preferred_siid = extract_channel_siid(device)
+
     for capability_name, definition in CAPABILITY_REGISTRY.items():
-        if not capability_matches_device(definition, device):
-            continue
         if definition["kind"] == "property":
-            prop = find_supported_property(properties, definition["aliases"], writable_only=True)
+            prop = find_supported_property(
+                properties,
+                definition["aliases"],
+                writable_only=True,
+                preferred_siid=preferred_siid,
+                expected_type=definition.get("value_type"),
+            )
             if prop:
                 controls[capability_name] = get_capability_target(prop, capability_name)
         elif definition["kind"] == "action":
-            action = find_supported_action(actions, definition["aliases"])
+            action = find_supported_action(
+                actions,
+                definition["aliases"],
+                preferred_siid=preferred_siid,
+            )
             if action:
                 controls[capability_name] = get_action_target(action, capability_name)
 
@@ -98,6 +129,12 @@ def build_device_capability_profile(device: Dict[str, Any], properties: List[Any
     for operation_name, capability_name in OPERATION_CAPABILITY_MAP.items():
         if operation_name == "toggle":
             supported_operations[operation_name] = "toggle" in controls or "power" in controls
+        elif operation_name in {"turn_on", "turn_off"}:
+            supported_operations[operation_name] = (
+                "power" in controls
+                or "motor_control" in controls
+                or "cover_position" in controls
+            )
         else:
             supported_operations[operation_name] = capability_name in controls
     supported_operations["set_property"] = any(is_property_writable(prop) for prop in properties)
@@ -231,87 +268,231 @@ def build_capability_mapping_report(properties: List[Any], actions: List[Any], c
 def coerce_boolean_value(value: Any) -> Any:
     if isinstance(value, bool):
         return value
+    if isinstance(value, (int, float)):
+        if value == 1:
+            return True
+        if value == 0:
+            return False
     if isinstance(value, str):
         normalized = value.strip().lower()
-        if normalized in {"true", "1", "on", "open", "yes"}:
+        if normalized in {"true", "1", "on", "open", "yes", "打开", "开启", "开"}:
             return True
-        if normalized in {"false", "0", "off", "close", "no"}:
+        if normalized in {"false", "0", "off", "close", "no", "关闭", "关掉", "关", "关上"}:
             return False
     return value
 
 
-def coerce_enum_value(target: Dict[str, Any], value: Any, definition: Dict[str, Any]) -> Any:
+def coerce_enum_value(target: Dict[str, Any], value: Any, definition: Optional[Dict[str, Any]] = None) -> tuple[Any, bool]:
+    """Resolve value against target value_list. Returns (resolved_value, matched_bool)."""
     value_list = target.get("value_list") or []
     if not value_list:
-        return value
+        return value, False
 
-    semantic_inputs = definition.get("semantic_inputs", {})
-    normalized_input = str(value).strip().lower()
-    semantic_alias = None
-    for semantic_key, aliases in semantic_inputs.items():
-        if normalized_input in [str(alias).strip().lower() for alias in aliases]:
-            semantic_alias = semantic_key
-            break
-
+    # 1. Exact value match (including type)
     for item in value_list:
-        candidates = [
-            str(item.get("value", "")).strip().lower(),
-            str(item.get("description", "")).strip().lower(),
-            str(item.get("desc", "")).strip().lower(),
-            str(item.get("desc_zh_cn", "")).strip().lower(),
-            str(item.get("desc_en", "")).strip().lower(),
-            str(item.get("name", "")).strip().lower(),
+        if value == item.get("value") and type(value) is type(item.get("value")):
+            return item.get("value"), True
+
+    normalized_input = str(value).strip().lower()
+    if not normalized_input:
+        return value, False
+
+    # 2. Stringified value match (e.g. "0" -> 0)
+    for item in value_list:
+        if normalized_input == str(item.get("value", "")).strip().lower():
+            return item.get("value"), True
+
+    # Collect all candidate search terms from semantic_inputs if defined
+    search_terms = [normalized_input]
+    semantic_inputs = (definition or {}).get("semantic_inputs", {})
+    for semantic_key, aliases in semantic_inputs.items():
+        lowered_aliases = [str(alias).strip().lower() for alias in aliases] + [str(semantic_key).strip().lower()]
+        if normalized_input in lowered_aliases:
+            for term in lowered_aliases:
+                if term and term not in search_terms:
+                    search_terms.append(term)
+
+    def _item_labels(item: Dict[str, Any]) -> List[str]:
+        raw_labels = [
+            item.get("description"),
+            item.get("desc"),
+            item.get("desc_zh_cn"),
+            item.get("desc_en"),
+            item.get("name"),
         ]
-        if semantic_alias and semantic_alias.lower() in [candidate for candidate in candidates if candidate]:
-            return item.get("value")
-        if normalized_input and normalized_input in [candidate for candidate in candidates if candidate]:
-            return item.get("value")
-    return value
+        labels: List[str] = []
+        for raw in raw_labels:
+            if not raw:
+                continue
+            text = str(raw).strip().lower()
+            if text:
+                labels.append(text)
+            for part in text.replace("|", "/").split("/"):
+                part_clean = part.strip()
+                if part_clean and part_clean not in labels:
+                    labels.append(part_clean)
+        return labels
+
+    # 3. Exact label match against any search term
+    for term in search_terms:
+        for item in value_list:
+            if term in _item_labels(item):
+                return item.get("value"), True
+
+    # 4. Substring label match against any search term
+    for term in search_terms:
+        if len(term) < 2 and term.isascii():
+            continue
+        for item in value_list:
+            for label in _item_labels(item):
+                if term in label or label in term:
+                    return item.get("value"), True
+
+    return value, False
 
 
-def coerce_range_value(target: Dict[str, Any], value: Any) -> Any:
+def coerce_range_value(target: Dict[str, Any], value: Any, definition: Optional[Dict[str, Any]] = None) -> Any:
     value_range = target.get("range")
     if not (isinstance(value_range, list) and len(value_range) >= 2):
         return value
+
+    prop_type = str(target.get("type") or "").lower()
+    minimum = value_range[0]
+    maximum = value_range[1]
+    step = value_range[2] if len(value_range) >= 3 else None
+
+    # Handle semantic strings like "暖" / "冷" on range-based color temperature
+    if isinstance(value, str):
+        lowered = value.strip().lower()
+        if lowered in {"暖", "暖光", "暖白", "warm"}:
+            value = minimum
+        elif lowered in {"冷", "冷光", "冷白", "cool", "cold"}:
+            value = maximum
+
     try:
-        numeric_value = int(value)
+        numeric_value = float(value)
     except (TypeError, ValueError):
         return value
-    minimum = int(value_range[0])
-    maximum = int(value_range[1])
-    return max(minimum, min(maximum, numeric_value))
+
+    clamped = max(float(minimum), min(float(maximum), numeric_value))
+
+    if prop_type == "float":
+        if step and step > 0:
+            steps = round((clamped - float(minimum)) / float(step))
+            clamped = float(minimum) + steps * float(step)
+            clamped = max(float(minimum), min(float(maximum), round(clamped, 4)))
+            if isinstance(step, int):
+                int_offset = int(round(clamped - float(minimum)))
+                if int_offset % step != 0:
+                    clamped = float(int(minimum) + (int_offset // step) * step)
+        return float(clamped)
+
+    int_min = int(round(float(minimum)))
+    int_max = int(round(float(maximum)))
+    int_val = int(round(clamped))
+    if step is not None:
+        int_step = int(round(float(step)))
+        if int_step > 1:
+            steps = round((int_val - int_min) / int_step)
+            int_val = int_min + steps * int_step
+            if int_val > int_max:
+                int_val -= int_step
+            if int_val < int_min:
+                int_val = int_min
+    return max(int_min, min(int_max, int_val))
 
 
 def coerce_integer_value(value: Any) -> Any:
-    try:
+    if isinstance(value, bool):
         return int(value)
+    try:
+        return int(round(float(value)))
     except (TypeError, ValueError):
         return value
+
+
+def align_to_property_type(target: Dict[str, Any], value: Any) -> Any:
+    """Align resolved value to the underlying MIoT property type (bool, int, uint, float, string)."""
+    prop_type = str(target.get("type") or "").lower()
+    if prop_type == "bool":
+        return coerce_boolean_value(value)
+    if prop_type in {"int", "uint"} or prop_type.startswith("int") or prop_type.startswith("uint"):
+        return coerce_integer_value(value)
+    if prop_type == "float":
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return value
+    if prop_type == "string":
+        return str(value).strip() if value is not None else ""
+    return value
 
 
 def coerce_value_for_target(capability_name: str, target: Dict[str, Any], value: Any) -> Any:
     if value is None:
         return value
 
-    definition = get_capability_definition(capability_name)
+    definition = CAPABILITY_REGISTRY.get(capability_name, {})
     resolved = value
+
+    # 1. If target has an enum value_list, try resolving enum first and return the exact enum value
+    if target.get("value_list"):
+        enum_val, matched = coerce_enum_value(target, resolved, definition)
+        if matched:
+            return align_to_property_type(target, enum_val)
+
+    # 2. If target has a numeric range, clamp and align to step
+    if target.get("range"):
+        resolved = coerce_range_value(target, resolved, definition)
+        return align_to_property_type(target, resolved)
+
+    # 3. Otherwise apply capability resolution strategies without overwriting target's native type
     for strategy in definition.get("value_resolution", []):
         if strategy == "boolean":
             resolved = coerce_boolean_value(resolved)
         elif strategy == "enum":
-            resolved = coerce_enum_value(target, resolved, definition)
+            enum_val, matched = coerce_enum_value(target, resolved, definition)
+            if matched:
+                return align_to_property_type(target, enum_val)
         elif strategy == "range":
-            resolved = coerce_range_value(target, resolved)
+            resolved = coerce_range_value(target, resolved, definition)
         elif strategy == "integer":
             resolved = coerce_integer_value(resolved)
-        elif strategy == "string":
+        elif strategy == "string" and str(target.get("type") or "").lower() in {"", "string"}:
             resolved = str(resolved).strip()
-    return resolved
+
+    return align_to_property_type(target, resolved)
+
+
+def coerce_raw_property_value(prop_or_target: Any, value: Any) -> Any:
+    """Coerce a value for any raw MIoT property (DevProp or dict target) before calling device.set()."""
+    if value is None:
+        return value
+    if isinstance(prop_or_target, dict):
+        target = prop_or_target
+    else:
+        target = normalize_property(prop_or_target)
+
+    if target.get("value_list"):
+        # Merge semantic inputs from mode, fan_speed, and motor_control for rich Chinese/English enum matching
+        merged_semantics: Dict[str, List[str]] = {}
+        for cap_key in ("mode", "fan_speed", "motor_control"):
+            cap_def = CAPABILITY_REGISTRY.get(cap_key, {})
+            for sem_k, sem_v in cap_def.get("semantic_inputs", {}).items():
+                merged_semantics.setdefault(sem_k, []).extend(sem_v)
+        enum_val, matched = coerce_enum_value(target, value, {"semantic_inputs": merged_semantics})
+        if matched:
+            return align_to_property_type(target, enum_val)
+
+    if target.get("range"):
+        value = coerce_range_value(target, value)
+
+    return align_to_property_type(target, value)
 
 
 def build_standard_capability_definition(capability_name: str, target: Dict[str, Any]) -> Dict[str, Any]:
     definition = get_capability_definition(capability_name)
-    value_schema: Dict[str, Any] = {"type": definition["value_type"]}
+    value_schema: Dict[str, Any] = {"type": target.get("type") or definition["value_type"]}
     if target.get("range"):
         value_schema["range"] = target["range"]
     if target.get("unit"):

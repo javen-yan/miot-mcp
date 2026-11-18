@@ -26,6 +26,7 @@ from mcp_server.core.capability_engine import (
     build_profile_driven_schema,
     build_standard_capability_definition,
     build_standard_capability_schema,
+    coerce_raw_property_value,
     coerce_value_for_target,
     describe_supported_operations,
     summarize_capabilities,
@@ -55,6 +56,9 @@ from mcp_server.core.intent_engine import infer_intent
 from mcp_server.core.normalizers import (
     dedupe_actions,
     dedupe_properties,
+    extract_channel_siid,
+    find_supported_action,
+    find_supported_property,
     normalize_device,
     normalize_device_summary,
     normalize_home,
@@ -70,7 +74,7 @@ from mcp_server.device_definitions.standard_capabilities import (
 from utils.logger import get_logger, setup_logging
 
 SERVER_NAME = "mijia-mcp-server"
-SERVER_VERSION = "2.0.0"
+SERVER_VERSION = "2.1.0"
 FALLBACK_ROOM_HINTS = ["客厅", "卧室", "书房", "厨房", "卫生间", "浴室", "阳台", "餐厅", "主卧", "次卧", "儿童房", "老人房", "玄关"]
 READ_MOSTLY_DEVICE_TYPES = {
     "temperature-humidity-sensor",
@@ -244,7 +248,7 @@ async def resolve_device(
     return normalize_device(device) | {"raw": device}
 
 
-async def get_device_profile(adapter: MijiaAdapter, device_id: str) -> Dict[str, Any]:
+async def get_device_profile(adapter: MijiaAdapter, device_id: str, include_state: bool = True) -> Dict[str, Any]:
     devices = await adapter.list_device_infos(refresh=False)
     device_info = next((device for device in devices if str(device.get("did")) == str(device_id)), {"did": device_id})
     normalized_device = normalize_device(device_info)
@@ -255,23 +259,25 @@ async def get_device_profile(adapter: MijiaAdapter, device_id: str) -> Dict[str,
     mapping_report = build_capability_mapping_report(properties, actions, capability_profile)
 
     state: Dict[str, Any] = {}
-    for control_name, target in capability_profile["controls"].items():
-        if target.get("kind") == "property" and target.get("readable") and target.get("name"):
-            try:
-                state[control_name] = await adapter.get_property_value_by_name(device_id, target["name"])
-            except Exception:
-                continue
+    if include_state:
+        prop_to_control_keys: Dict[str, List[str]] = {}
+        for control_name, target in capability_profile["controls"].items():
+            if target.get("kind") == "property" and target.get("readable") and target.get("name"):
+                prop_name = target["name"]
+                prop_to_control_keys.setdefault(prop_name, []).append(control_name)
 
-    if normalized_device.get("device_type") in READ_MOSTLY_DEVICE_TYPES:
-        for prop in properties:
-            prop_name = getattr(prop, "name", None)
-            if not prop_name or prop_name in state:
-                continue
-            if not getattr(prop, "rw", None) or "r" in str(getattr(prop, "rw", "")).lower():
-                try:
-                    state[prop_name] = await adapter.get_property_value_by_name(device_id, prop_name)
-                except Exception:
+        if normalized_device.get("device_type") in READ_MOSTLY_DEVICE_TYPES:
+            for prop in properties:
+                prop_name = getattr(prop, "name", None)
+                if not prop_name:
                     continue
+                if not getattr(prop, "rw", None) or "r" in str(getattr(prop, "rw", "")).lower():
+                    prop_to_control_keys.setdefault(prop_name, []).append(prop_name)
+
+        batch_values = await adapter.batch_get_property_values(device_id, list(prop_to_control_keys.keys()))
+        for prop_name, value in batch_values.items():
+            for key in prop_to_control_keys.get(prop_name, []):
+                state[key] = value
 
     profile = {
         "capabilities": capabilities,
@@ -849,8 +855,9 @@ async def control_device_with_profile_fallback(
         room=room,
         home=home,
         device_type=prefer_device_type,
+        refresh=False,
     )
-    profile = await get_device_profile(adapter, device["device_id"])
+    profile = await get_device_profile(adapter, device["device_id"], include_state=False)
     match = find_profile_control_match(query, profile)
     if not match:
         return build_result(
@@ -873,38 +880,19 @@ async def control_device_with_profile_fallback(
                 device_resource=profile.get("device_resource"),
                 parsed_intent=parsed_intent or {},
             )
-        capability_name = None
-        for item in profile.get("profile_driven_schema", {}).get("writable_properties", []):
-            if item.get("name") == match["name"]:
-                if item.get("value_list"):
-                    capability_name = "mode"
-                break
-        if capability_name:
-            resolved_target = {
-                "name": match["name"],
-                "value_list": next(
-                    (
-                        item.get("value_list")
-                        for item in profile.get("profile_driven_schema", {}).get("writable_properties", [])
-                        if item.get("name") == match["name"]
-                    ),
-                    None,
-                ),
-                "range": next(
-                    (
-                        item.get("range")
-                        for item in profile.get("profile_driven_schema", {}).get("writable_properties", [])
-                        if item.get("name") == match["name"]
-                    ),
-                    None,
-                ),
-            }
-            value = coerce_value_for_target(capability_name, resolved_target, value)
+        resolved_target = {
+            "name": match["name"],
+            "type": match.get("type"),
+            "value_list": match.get("value_list"),
+            "range": match.get("range"),
+        }
+        value = coerce_raw_property_value(resolved_target, value)
         return await control_device(
             "set_property",
             device_id=device["device_id"],
             value=value,
             property_name=match["name"],
+            refresh=False,
         )
 
     return await control_device(
@@ -912,6 +900,7 @@ async def control_device_with_profile_fallback(
         device_id=device["device_id"],
         value=[],
         action_name=match["name"],
+        refresh=False,
     )
 
 
@@ -968,6 +957,7 @@ async def execute_operation(
     capability_profile = build_device_capability_profile(device, properties, actions)
     controls = capability_profile["controls"]
     supported_operations = capability_profile["supported_operations"]
+    preferred_siid = extract_channel_siid(device)
 
     if operation in supported_operations and not supported_operations[operation]:
         raise RuntimeError(
@@ -975,31 +965,58 @@ async def execute_operation(
             f"Supported operations: {', '.join(name for name, enabled in supported_operations.items() if enabled) or 'none'}"
         )
 
-    if operation == "turn_on":
+    if operation in {"turn_on", "turn_off"}:
+        desired_bool = operation == "turn_on"
         target = controls.get("power")
-        if not target or not target.get("writable"):
-            raise RuntimeError("This device does not expose a writable power capability")
-        await adapter.set_property_value_by_name(device_id, target["name"], True)
-        return {"operation": operation, "target": target, "value": True, "primary_domain": capability_profile["primary_domain"]}
-
-    if operation == "turn_off":
-        target = controls.get("power")
-        if not target or not target.get("writable"):
-            raise RuntimeError("This device does not expose a writable power capability")
-        await adapter.set_property_value_by_name(device_id, target["name"], False)
-        return {"operation": operation, "target": target, "value": False, "primary_domain": capability_profile["primary_domain"]}
+        if target and target.get("writable"):
+            await adapter.set_property_value_by_name(device_id, target["name"], desired_bool)
+            return {
+                "operation": operation,
+                "capability": "power",
+                "target": target,
+                "value": desired_bool,
+                "primary_domain": capability_profile["primary_domain"],
+            }
+        # Fallback for curtains, window openers, and airers controlled via motor-control or target-position
+        motor_target = controls.get("motor_control")
+        if motor_target and motor_target.get("writable"):
+            resolved_motor_val = coerce_value_for_target(
+                "motor_control",
+                motor_target,
+                "open" if desired_bool else "close",
+            )
+            await adapter.set_property_value_by_name(device_id, motor_target["name"], resolved_motor_val)
+            return {
+                "operation": operation,
+                "capability": "motor_control",
+                "target": motor_target,
+                "value": resolved_motor_val,
+                "primary_domain": capability_profile["primary_domain"],
+            }
+        cover_target = controls.get("cover_position")
+        if cover_target and cover_target.get("writable"):
+            resolved_pos = coerce_value_for_target("cover_position", cover_target, 100 if desired_bool else 0)
+            await adapter.set_property_value_by_name(device_id, cover_target["name"], resolved_pos)
+            return {
+                "operation": operation,
+                "capability": "cover_position",
+                "target": cover_target,
+                "value": resolved_pos,
+                "primary_domain": capability_profile["primary_domain"],
+            }
+        raise RuntimeError("This device does not expose a writable power capability")
 
     if operation == "toggle":
         action_target = controls.get("toggle")
         if action_target:
-            await adapter.call_action_by_name(device_id, action_target["name"], [])
-            return {"operation": operation, "target": action_target, "primary_domain": capability_profile["primary_domain"]}
+            await adapter.call_action_by_name(device_id, action_target["name"], None)
+            return {"operation": operation, "capability": "toggle", "target": action_target, "primary_domain": capability_profile["primary_domain"]}
         power_target = controls.get("power")
         if power_target:
             current_value = await adapter.get_property_value_by_name(device_id, power_target["name"])
             next_value = not bool(current_value)
             await adapter.set_property_value_by_name(device_id, power_target["name"], next_value)
-            return {"operation": operation, "target": power_target, "value": next_value, "primary_domain": capability_profile["primary_domain"]}
+            return {"operation": operation, "capability": "power", "target": power_target, "value": next_value, "primary_domain": capability_profile["primary_domain"]}
         raise RuntimeError("This device does not support toggle control")
 
     capability_name = OPERATION_CAPABILITY_MAP.get(operation)
@@ -1010,8 +1027,6 @@ async def execute_operation(
             if not target or not target.get("writable"):
                 raise RuntimeError(f"This device does not support {capability_definition['label'].lower()} control")
             resolved_value = coerce_value_for_target(capability_name, target, value)
-            if capability_definition.get("value_type") == "integer":
-                resolved_value = int(resolved_value)
             await adapter.set_property_value_by_name(device_id, target["name"], resolved_value)
             return {
                 "operation": operation,
@@ -1025,14 +1040,28 @@ async def execute_operation(
     if operation == "set_property":
         if not property_name:
             raise RuntimeError("property_name is required for set_property")
-        await adapter.set_property_value_by_name(device_id, property_name, value)
-        return {"operation": operation, "target": property_name, "value": value}
+        matched_prop = find_supported_property(
+            properties,
+            [property_name],
+            writable_only=True,
+            preferred_siid=preferred_siid,
+        )
+        actual_name = getattr(matched_prop, "name", None) or property_name
+        resolved_val = coerce_raw_property_value(matched_prop, value) if matched_prop else value
+        await adapter.set_property_value_by_name(device_id, actual_name, resolved_val)
+        return {"operation": operation, "target": actual_name, "value": resolved_val}
 
     if operation == "run_action":
         if not action_name:
             raise RuntimeError("action_name is required for run_action")
-        await adapter.call_action_by_name(device_id, action_name, value or [])
-        return {"operation": operation, "target": action_name, "value": value or []}
+        matched_action = find_supported_action(
+            actions,
+            [action_name],
+            preferred_siid=preferred_siid,
+        )
+        actual_action_name = getattr(matched_action, "name", None) or action_name
+        await adapter.call_action_by_name(device_id, actual_action_name, value if value else None)
+        return {"operation": operation, "target": actual_action_name, "value": value or []}
 
     raise RuntimeError(f"Unsupported operation: {operation}")
 
@@ -1491,11 +1520,12 @@ async def control_device(
     action_name: str = "",
     refresh: bool = False,
 ) -> ControlToolResult:
-    """Control a device through capability operations like turn_on, set_brightness, set_target_temperature, or run_action."""
+    """Control a device through capability operations like turn_on, set_brightness, set_target_temperature, set_property, or run_action."""
     adapter = get_adapter()
     if not adapter:
         return build_result(False, "Adapter not initialized")
 
+    device: Optional[Dict[str, Any]] = None
     try:
         await ensure_connected(adapter)
         device = await resolve_device(
@@ -1506,7 +1536,10 @@ async def control_device(
             home=home,
             refresh=refresh,
         )
-        before_profile = await get_device_profile(adapter, device["device_id"])
+        # Load capability profile metadata without blocking on cloud property reads
+        before_profile = await get_device_profile(adapter, device["device_id"], include_state=False)
+        before_state = dict(before_profile.get("state", {}))
+
         execution = await execute_operation(
             adapter,
             device["raw"],
@@ -1516,70 +1549,110 @@ async def control_device(
             property_name=property_name,
             action_name=action_name,
         )
-        after_profile = await get_device_profile(adapter, device["device_id"])
-        outcome = summarize_control_outcome(operation, before_profile["state"], after_profile["state"])
+
+        # Short settle delay before reading updated state via single batch call
+        await anyio.sleep(0.3)
+        try:
+            after_profile = await get_device_profile(adapter, device["device_id"], include_state=True)
+            after_state = dict(after_profile.get("state", {}))
+        except Exception as state_exc:
+            logger.debug(f"Post-control state read skipped for {device['device_id']}: {state_exc}")
+            after_state = dict(before_state)
+
+        # Apply optimistic state update for the controlled capability in case cloud propagation lags
+        controlled_cap = execution.get("capability")
+        if controlled_cap and "value" in execution and controlled_cap not in {"toggle"}:
+            after_state[controlled_cap] = execution["value"]
+        elif operation == "set_property" and execution.get("target") and "value" in execution:
+            after_state[str(execution["target"])] = execution["value"]
+
+        outcome = summarize_control_outcome(operation, before_state, after_state)
         return build_result(
             True,
             f"Executed {operation} on {device['name']}",
             device={k: v for k, v in device.items() if k != "raw"},
             execution=execution,
-            previous_state=before_profile["state"],
-            current_state=after_profile["state"],
-            state=after_profile["state"],
+            previous_state=before_state,
+            current_state=after_state,
+            state=after_state,
             outcome=outcome,
             assistant_summary=build_control_assistant_summary(device["name"], operation, outcome),
         )
     except Exception as exc:
         logger.error(f"Failed to control device: {exc}")
-        return build_error_result(exc)
+        extra_context: Dict[str, Any] = {}
+        if device is not None:
+            extra_context["device"] = {k: v for k, v in device.items() if k != "raw"}
+            try:
+                err_profile = await get_device_profile(adapter, device["device_id"], include_state=False)
+                extra_context["supported_operations"] = [
+                    item["operation"] for item in err_profile.get("supported_operations", []) if item.get("enabled")
+                ]
+                extra_context["writable_properties"] = [
+                    {
+                        "name": p.get("name"),
+                        "description": p.get("description"),
+                        "type": p.get("type"),
+                        "range": p.get("range"),
+                        "value_list": p.get("value_list"),
+                    }
+                    for p in err_profile.get("profile_driven_schema", {}).get("writable_properties", [])
+                ]
+                extra_context["actions"] = [
+                    {"name": a.get("name"), "description": a.get("description")}
+                    for a in err_profile.get("profile_driven_schema", {}).get("actions", [])
+                ]
+            except Exception:
+                pass
+        return build_error_result(exc, **extra_context)
 
 
 @mcp.tool(name="turn_on_device")
 async def turn_on_device(device_name: str = "", device_id: str = "", room: str = "", home: str = "") -> ControlToolResult:
     """Turn on a device."""
-    return await control_device("turn_on", device_name=device_name, device_id=device_id, room=room, home=home, refresh=True)
+    return await control_device("turn_on", device_name=device_name, device_id=device_id, room=room, home=home, refresh=False)
 
 
 @mcp.tool(name="turn_off_device")
 async def turn_off_device(device_name: str = "", device_id: str = "", room: str = "", home: str = "") -> ControlToolResult:
     """Turn off a device."""
-    return await control_device("turn_off", device_name=device_name, device_id=device_id, room=room, home=home, refresh=True)
+    return await control_device("turn_off", device_name=device_name, device_id=device_id, room=room, home=home, refresh=False)
 
 
 @mcp.tool(name="set_brightness")
 async def set_brightness(device_name: str = "", device_id: str = "", room: str = "", home: str = "", value: int = 50) -> ControlToolResult:
     """Set device brightness."""
-    return await control_device("set_brightness", device_name=device_name, device_id=device_id, room=room, home=home, value=value, refresh=True)
+    return await control_device("set_brightness", device_name=device_name, device_id=device_id, room=room, home=home, value=value, refresh=False)
 
 
 @mcp.tool(name="set_color_temperature")
 async def set_color_temperature(device_name: str = "", device_id: str = "", room: str = "", home: str = "", value: int = 4000) -> ControlToolResult:
     """Set device color temperature."""
-    return await control_device("set_color_temperature", device_name=device_name, device_id=device_id, room=room, home=home, value=value, refresh=True)
+    return await control_device("set_color_temperature", device_name=device_name, device_id=device_id, room=room, home=home, value=value, refresh=False)
 
 
 @mcp.tool(name="set_target_temperature")
 async def set_target_temperature(device_name: str = "", device_id: str = "", room: str = "", home: str = "", value: int = 26) -> ControlToolResult:
     """Set target temperature on any target-temperature-capable device."""
-    return await control_device("set_target_temperature", device_name=device_name, device_id=device_id, room=room, home=home, value=value, refresh=True)
+    return await control_device("set_target_temperature", device_name=device_name, device_id=device_id, room=room, home=home, value=value, refresh=False)
 
 
 @mcp.tool(name="set_hvac_mode")
 async def set_hvac_mode(device_name: str = "", device_id: str = "", room: str = "", home: str = "", value: Any = "") -> ControlToolResult:
     """Set mode on a mode-capable device such as an air conditioner, fan, or purifier."""
-    return await control_device("set_hvac_mode", device_name=device_name, device_id=device_id, room=room, home=home, value=value, refresh=True)
+    return await control_device("set_hvac_mode", device_name=device_name, device_id=device_id, room=room, home=home, value=value, refresh=False)
 
 
 @mcp.tool(name="set_fan_speed")
 async def set_fan_speed(device_name: str = "", device_id: str = "", room: str = "", home: str = "", value: Any = 1) -> ControlToolResult:
     """Set fan speed on any fan-speed-capable device such as a fan, air conditioner, or purifier."""
-    return await control_device("set_fan_speed", device_name=device_name, device_id=device_id, room=room, home=home, value=value, refresh=True)
+    return await control_device("set_fan_speed", device_name=device_name, device_id=device_id, room=room, home=home, value=value, refresh=False)
 
 
 @mcp.tool(name="set_cover_position")
 async def set_cover_position(device_name: str = "", device_id: str = "", room: str = "", home: str = "", value: int = 50) -> ControlToolResult:
     """Set position for any cover-capable device such as a curtain or blind."""
-    return await control_device("set_cover_position", device_name=device_name, device_id=device_id, room=room, home=home, value=value, refresh=True)
+    return await control_device("set_cover_position", device_name=device_name, device_id=device_id, room=room, home=home, value=value, refresh=False)
 
 
 @mcp.tool(name="list_scenes")
@@ -1690,7 +1763,7 @@ async def control_by_intent(
                 room=resolved_room,
                 home=home,
                 device_type=prefer_device_type,
-                refresh=True,
+                refresh=False,
             ))
             return build_result(
                 bool(payload.get("success")),
@@ -1710,9 +1783,9 @@ async def control_by_intent(
                 room=resolved_room,
                 home=home,
                 device_type=prefer_device_type,
-                refresh=True,
+                refresh=False,
             )
-            profile = await get_device_profile(adapter, device["device_id"])
+            profile = await get_device_profile(adapter, device["device_id"], include_state=False)
             supported_lookup = {
                 item["operation"]: item["enabled"]
                 for item in profile.get("supported_operations", [])
@@ -1721,7 +1794,7 @@ async def control_by_intent(
                 kwargs: Dict[str, Any] = {
                     "operation": parsed["intent"],
                     "device_id": device["device_id"],
-                    "refresh": True,
+                    "refresh": False,
                 }
                 if "value" in parsed:
                     kwargs["value"] = parsed["value"]

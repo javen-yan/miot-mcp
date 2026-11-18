@@ -1,6 +1,6 @@
 {
   "name": "mijia-mcp-server",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "description": "Productized Mijia MCP server built on top of mijia-api 3.x with layered capability control for reusable device capabilities, homes, and scenes.",
   "author": "Mijia MCP Team",
   "license": "MIT",
